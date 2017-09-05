@@ -51,7 +51,12 @@ func main() {
 		"namespace":     *namespace,
 	}
 
-	controller.NewPodController(clientset, options).Run(stop, wg)
+	fmt.Println("Configured namespace: ", options["namespace"])
+	fmt.Println("Configured labelSelector: ", options["labelSelector"])
+	fmt.Println("Configured mode: ", options["mode"])
+	fmt.Println("Starting controller...")
+
+	go controller.NewPodController(clientset, options).Run(stop, wg)
 
 	<-sigs // Wait for signals (this hangs until a signal arrives)
 	log.Printf("Shutting down...")

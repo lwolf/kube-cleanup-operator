@@ -63,16 +63,10 @@ func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *Po
 		cache.Indexers{},
 	)
 	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(cur interface{}) {
-			podWatcher.doTheMagic(cur)
-		},
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
 				podWatcher.doTheMagic(cur)
 			}
-		},
-		DeleteFunc: func(cur interface{}) {
-			podWatcher.doTheMagic(cur)
 		},
 	})
 
@@ -84,6 +78,7 @@ func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *Po
 
 // Run starts the process for listening for namespace changes and acting upon those changes.
 func (c *PodController) Run(stopCh <-chan struct{}, wg *sync.WaitGroup) {
+	fmt.Println("Listening for changes...")
 	// When this function completes, mark the go function as done
 	defer wg.Done()
 
