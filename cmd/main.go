@@ -12,8 +12,6 @@ import (
 	"github.com/lwolf/kube-cleanup-operator/pkg/controller"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/apimachinery/pkg/labels"
-	"fmt"
 )
 
 func main() {
@@ -28,9 +26,7 @@ func main() {
 	wg := &sync.WaitGroup{} // Goroutines can add themselves to this to be waited on so that they finish
 
 	runOutsideCluster := flag.Bool("run-outside-cluster", false, "Set this flag when running outside of the cluster.")
-	labelSelectorString := flag.String("label", "", "Watch only jobs with this label")
 	namespace := flag.String("namespace", "", "Watch only this namespaces")
-	mode := flag.String("mode", "", "Change working mode: keep all or delete all. Default is delete all")
 	flag.Parse()
 
 	// Create clientset for interacting with the kubernetes cluster
@@ -39,22 +35,13 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	var labelSelector labels.Selector
-	labelSelector, err = labels.Parse(*labelSelectorString)
-	if err != nil {
-		panic(fmt.Errorf("invalid selector %q: %v", *labelSelectorString, err))
-	}
 
 	options := map[string]string{
-		"labelSelector": labelSelector.String(),
-		"mode":          *mode,
-		"namespace":     *namespace,
+		"namespace": *namespace,
 	}
 
-	fmt.Println("Configured namespace: ", options["namespace"])
-	fmt.Println("Configured labelSelector: ", options["labelSelector"])
-	fmt.Println("Configured mode: ", options["mode"])
-	fmt.Println("Starting controller...")
+	log.Printf("Configured namespace: '%s'", options["namespace"])
+	log.Printf("Starting controller...")
 
 	go controller.NewPodController(clientset, options).Run(stop, wg)
 

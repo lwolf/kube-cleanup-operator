@@ -1,15 +1,14 @@
 package controller
 
 import (
-	"fmt"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	//"k8s.io/apimachinery/pkg/fields"
 	"encoding/json"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/tools/cache"
+	"log"
 	"reflect"
 	"sync"
 	"time"
@@ -20,9 +19,6 @@ import (
 type PodController struct {
 	podInformer cache.SharedIndexInformer
 	kclient     *kubernetes.Clientset
-}
-
-type PodSelector struct {
 }
 
 type CreatedByAnnotation struct {
@@ -46,15 +42,9 @@ func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *Po
 	podInformer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				if opts["labelSelector"] != "" {
-					options.LabelSelector = opts["labelSelector"]
-				}
 				return kclient.CoreV1().Pods(opts["namespace"]).List(options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				if opts["labelSelector"] != "" {
-					options.LabelSelector = opts["labelSelector"]
-				}
 				return kclient.CoreV1().Pods(opts["namespace"]).Watch(options)
 			},
 		},
@@ -63,6 +53,9 @@ func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *Po
 		cache.Indexers{},
 	)
 	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(cur interface{}) {
+			podWatcher.doTheMagic(cur)
+		},
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
 				podWatcher.doTheMagic(cur)
@@ -76,9 +69,9 @@ func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *Po
 	return podWatcher
 }
 
-// Run starts the process for listening for namespace changes and acting upon those changes.
+// Run starts the process for listening for pod changes and acting upon those changes.
 func (c *PodController) Run(stopCh <-chan struct{}, wg *sync.WaitGroup) {
-	fmt.Println("Listening for changes...")
+	log.Printf("Listening for changes...")
 	// When this function completes, mark the go function as done
 	defer wg.Done()
 
@@ -95,7 +88,7 @@ func (c *PodController) Run(stopCh <-chan struct{}, wg *sync.WaitGroup) {
 func (c *PodController) doTheMagic(cur interface{}) {
 	podObj := cur.(*v1.Pod)
 	// Skip Pods in Running or Pending state
-	if podObj.Status.Phase == "Running" || podObj.Status.Phase == "Pending" {
+	if podObj.Status.Phase != "Succeeded" {
 		return
 	}
 	var createdMeta CreatedByAnnotation
@@ -105,13 +98,14 @@ func (c *PodController) doTheMagic(cur interface{}) {
 	}
 	restartCounts := podObj.Status.ContainerStatuses[0].RestartCount
 	if restartCounts == 0 {
-		fmt.Println("Going to delete pod ", podObj.Name)
+		log.Printf("Going to delete pod '%s'", podObj.Name)
 		// Delete Pod
 		var po metav1.DeleteOptions
 		c.kclient.CoreV1().Pods(podObj.Namespace).Delete(podObj.Name, &po)
+
+		log.Printf("Going to delete job '%s'", createdMeta.Reference.Name)
+		// Delete Job itself
+		var jo metav1.DeleteOptions
+		c.kclient.BatchV1Client.Jobs(createdMeta.Reference.Namespace).Delete(createdMeta.Reference.Name, &jo)
 	}
-	fmt.Println("Going to delete job ", createdMeta.Reference.Name, "status: ", podObj.Status.Phase)
-	// Delete Job itself
-	var jo metav1.DeleteOptions
-	c.kclient.BatchV1Client.Jobs(createdMeta.Reference.Namespace).Delete(createdMeta.Reference.Name, &jo)
 }
