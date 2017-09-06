@@ -10,15 +10,19 @@ metadata:
 rules:
 - apiGroups:
   - ""
-  - "extensions"
   resources:
   - pods
-  - jobs
   verbs:
   - get
   - list
   - watch
   - delete
+- apiGroups: ["batch", "extensions"]
+  resources:
+  - jobs
+  verbs:
+  - delete
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRoleBinding

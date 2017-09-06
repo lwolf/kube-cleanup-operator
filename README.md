@@ -20,7 +20,7 @@ kubectl create -f https://raw.githubusercontent.com/lwolf/kube-cleanup-operator/
 kubectl create -f https://raw.githubusercontent.com/lwolf/kube-cleanup-operator/master/deploy/deployment.yaml
 
 
-kubectl logs -f <operator-pod>
+kubectl logs -f $(kubectl get pods --namespace default -l "run=cleanup-operator" -o jsonpath="{.items[0].metadata.name}")
 
 # Use simple job to test it
 kubectl create -f https://raw.githubusercontent.com/kubernetes/kubernetes.github.io/
