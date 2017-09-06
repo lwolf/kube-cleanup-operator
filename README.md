@@ -8,8 +8,8 @@ Some defaults:
 * Only Pods created by Jobs are monitored
 * Only Pods in Completed state with 0 restarts are deleted
 
-
 ## Usage
+http://g.recordit.co/aDU52FJIwP.gif
 
 ```
 # remember to change namespace in RBAC manifests for monitoring namespaces other than "default"
@@ -23,7 +23,7 @@ kubectl create -f https://raw.githubusercontent.com/lwolf/kube-cleanup-operator/
 kubectl logs -f $(kubectl get pods --namespace default -l "run=cleanup-operator" -o jsonpath="{.items[0].metadata.name}")
 
 # Use simple job to test it
-kubectl create -f https://raw.githubusercontent.com/kubernetes/kubernetes.github.io/
+kubectl create -f kubectl create -f https://raw.githubusercontent.com/kubernetes/kubernetes.github.io/master/docs/concepts/workloads/controllers/job.yaml
 ```
 
 
