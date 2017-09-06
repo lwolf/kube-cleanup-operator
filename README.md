@@ -9,7 +9,8 @@ Some defaults:
 * Only Pods in Completed state with 0 restarts are deleted
 
 ## Usage
-http://g.recordit.co/aDU52FJIwP.gif
+
+![screensharing](http://g.recordit.co/aDU52FJIwP.gif)
 
 ```
 # remember to change namespace in RBAC manifests for monitoring namespaces other than "default"
