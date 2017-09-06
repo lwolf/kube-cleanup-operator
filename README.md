@@ -8,7 +8,26 @@ Some defaults:
 * Only Pods created by Jobs are monitored
 * Only Pods in Completed state with 0 restarts are deleted
 
+
 ## Usage
+
+```
+# remember to change namespace in RBAC manifests for monitoring namespaces other than "default"
+
+kubectl create -f https://raw.githubusercontent.com/lwolf/kube-cleanup-operator/master/deploy/rbac.yaml
+
+# create deployment
+kubectl create -f https://raw.githubusercontent.com/lwolf/kube-cleanup-operator/master/deploy/deployment.yaml
+
+
+kubectl logs -f <operator-pod>
+
+# Use simple job to test it
+kubectl create -f https://raw.githubusercontent.com/kubernetes/kubernetes.github.io/
+```
+
+
+## Development
 
 ```
 $ make install_deps
