@@ -1,0 +1,32 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    run: cleanup-operator
+  name: cleanup-operator
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: cleanup-operator
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        run: cleanup-operator
+    spec:
+      serviceAccountName: cleanup-operator
+      containers:
+      - args:
+        - --namespace=default
+        image: lwolf/kube-cleanup-operator
+        imagePullPolicy: Always
+        name: cleanup-operator
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
