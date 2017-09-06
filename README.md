@@ -1,4 +1,5 @@
 # Kubernetes cleanup operator
+[![Build Status](https://travis-ci.org/lwolf/kube-cleanup-operator.svg?branch=master)](https://travis-ci.org/lwolf/kube-cleanup-operator)
 
 Experimental Kubernetes Operator to automatically delete completed Jobs and their Pods.
 Controller listens for changes in Pods created by Jobs and deletes it on Completion.
