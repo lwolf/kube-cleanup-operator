@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -10,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/lwolf/kube-cleanup-operator/pkg/controller"
+	log "github.com/sirupsen/logrus"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -17,6 +17,7 @@ import (
 func main() {
 	// Set logging output to standard console out
 	log.SetOutput(os.Stdout)
+	log.SetFormatter(&log.JSONFormatter{})
 
 	sigs := make(chan os.Signal, 1) // Create channel to receive OS signals
 	stop := make(chan struct{})     // Create channel to receive stop signal
@@ -33,20 +34,20 @@ func main() {
 	clientset, err := newClientSet(*runOutsideCluster)
 
 	if err != nil {
-		panic(err.Error())
+		log.Fatal(err)
 	}
 
 	options := map[string]string{
 		"namespace": *namespace,
 	}
 
-	log.Printf("Configured namespace: '%s'", options["namespace"])
-	log.Printf("Starting controller...")
+	log.Infof("Configured namespace: '%s'", options["namespace"])
+	log.Infof("Starting controller...")
 
 	go controller.NewPodController(clientset, options).Run(stop, wg)
 
 	<-sigs // Wait for signals (this hangs until a signal arrives)
-	log.Printf("Shutting down...")
+	log.Infof("Shutting down...")
 
 	close(stop) // Tell goroutines to stop themselves
 	wg.Wait()   // Wait for all to be stopped

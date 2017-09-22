@@ -32,3 +32,6 @@
 [[override]]
   name = "k8s.io/apimachinery"
   revision = "abe34e4f5b4413c282a83011892cbeea5b32223b"
+[[constraint]]
+  name = "github.com/Sirupsen/logrus"
+  version = "0.10.0"

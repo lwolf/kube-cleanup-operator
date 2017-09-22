@@ -1,15 +1,17 @@
 package controller
 
 import (
-	"k8s.io/api/batch/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	job "k8s.io/client-go/informers/batch/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/cache"
 	"log"
 	"reflect"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"k8s.io/api/batch/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	informers "k8s.io/client-go/informers/batch/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 )
 
 // JobController watches the kubernetes api for changes to Jobs and
@@ -22,7 +24,7 @@ type JobController struct {
 // NewJobController creates a new NewJobController
 func NewJobController(kclient *kubernetes.Clientset, opts map[string]string) *JobController {
 	jobWatcher := &JobController{}
-	jobInformer := job.NewJobInformer(kclient, opts["namespace"], time.Second*30, cache.Indexers{})
+	jobInformer := informers.NewJobInformer(kclient, opts["namespace"], time.Second*30, cache.Indexers{})
 	jobInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(cur interface{}) {
 			jobWatcher.maybeDeleteJob(cur)
@@ -42,7 +44,7 @@ func NewJobController(kclient *kubernetes.Clientset, opts map[string]string) *Jo
 
 // Run starts the process for listening for job changes and acting upon those changes.
 func (c *JobController) Run(stopCh <-chan struct{}, wg *sync.WaitGroup) {
-	log.Println("Listening for changes...")
+	log.Infof("Listening for changes...")
 	// When this function completes, mark the go function as done
 	defer wg.Done()
 
@@ -58,12 +60,25 @@ func (c *JobController) Run(stopCh <-chan struct{}, wg *sync.WaitGroup) {
 
 func (c *JobController) maybeDeleteJob(cur interface{}) {
 	job := cur.(*v1.Job)
+	log.WithFields(log.Fields{
+		"type":      "Job",
+		"name":      job.ObjectMeta.Name,
+		"namespace": job.ObjectMeta.Namespace,
+	}).Infof("Found")
 	if !shouldDeleteJob(job) {
 		return
 	}
-	log.Printf("Deleting job %s", job.ObjectMeta.Name)
+	log.WithFields(log.Fields{
+		"type":      "Job",
+		"name":      job.ObjectMeta.Name,
+		"namespace": job.ObjectMeta.Namespace,
+	}).Infof("Deleting")
 	if err := c.kclient.Batch().Jobs(job.ObjectMeta.Namespace).Delete(job.ObjectMeta.Name, &metav1.DeleteOptions{}); err != nil {
-		log.Println(err)
+		log.WithFields(log.Fields{
+			"type":      "Job",
+			"name":      job.ObjectMeta.Name,
+			"namespace": job.ObjectMeta.Namespace,
+		}).Warn(err)
 	}
 }
 
