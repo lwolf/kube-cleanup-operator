@@ -8,7 +8,6 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/lwolf/kube-cleanup-operator/pkg/controller"
 	log "github.com/sirupsen/logrus"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -44,7 +43,7 @@ func main() {
 	log.Infof("Configured namespace: '%s'", options["namespace"])
 	log.Infof("Starting controller...")
 
-	go controller.NewPodController(clientset, options).Run(stop, wg)
+	go NewPodController(clientset, options).Run(stop, wg)
 
 	<-sigs // Wait for signals (this hangs until a signal arrives)
 	log.Infof("Shutting down...")
