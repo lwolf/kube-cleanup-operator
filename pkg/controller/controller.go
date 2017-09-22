@@ -12,36 +12,36 @@ import (
 	"time"
 )
 
-// PodController watches the kubernetes api for changes to Pods and
-// delete completed Pods without specific annotation
-type PodController struct {
-	podInformer cache.SharedIndexInformer
+// JobController watches the kubernetes api for changes to Jobs and
+// delete completed Jobs without specific annotation
+type JobController struct {
+	jobInformer cache.SharedIndexInformer
 	kclient     *kubernetes.Clientset
 }
 
-// NewPodController creates a new NewPodController
-func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *PodController {
-	podWatcher := &PodController{}
+// NewJobController creates a new NewJobController
+func NewJobController(kclient *kubernetes.Clientset, opts map[string]string) *JobController {
+	jobWatcher := &JobController{}
 	jobInformer := job.NewJobInformer(kclient, opts["namespace"], time.Second*30, cache.Indexers{})
 	jobInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(cur interface{}) {
-			podWatcher.doTheMagic(cur)
+			jobWatcher.maybeDeleteJob(cur)
 		},
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
-				podWatcher.doTheMagic(cur)
+				jobWatcher.maybeDeleteJob(cur)
 			}
 		},
 	})
 
-	podWatcher.kclient = kclient
-	podWatcher.podInformer = jobInformer
+	jobWatcher.kclient = kclient
+	jobWatcher.jobInformer = jobInformer
 
-	return podWatcher
+	return jobWatcher
 }
 
-// Run starts the process for listening for pod changes and acting upon those changes.
-func (c *PodController) Run(stopCh <-chan struct{}, wg *sync.WaitGroup) {
+// Run starts the process for listening for job changes and acting upon those changes.
+func (c *JobController) Run(stopCh <-chan struct{}, wg *sync.WaitGroup) {
 	log.Println("Listening for changes...")
 	// When this function completes, mark the go function as done
 	defer wg.Done()
@@ -50,24 +50,27 @@ func (c *PodController) Run(stopCh <-chan struct{}, wg *sync.WaitGroup) {
 	wg.Add(1)
 
 	// Execute go function
-	go c.podInformer.Run(stopCh)
+	go c.jobInformer.Run(stopCh)
 
 	// Wait till we receive a stop signal
 	<-stopCh
 }
 
-func shouldDeleteJob(job *v1.Job) bool {
-	return job.Status.CompletionTime != nil && ((job.Status.Succeeded > 0 && job.Status.Failed == 0) || (true))
-}
-
-func (c *PodController) doTheMagic(cur interface{}) {
+func (c *JobController) maybeDeleteJob(cur interface{}) {
 	job := cur.(*v1.Job)
-	// Skip Pods in Running or Pending state
 	if !shouldDeleteJob(job) {
 		return
 	}
 	log.Printf("Deleting job %s", job.ObjectMeta.Name)
-	if err := c.kclient.Batch().Jobs("namespace").Delete(job.ObjectMeta.Name, &metav1.DeleteOptions{}); err != nil {
+	if err := c.kclient.Batch().Jobs(job.ObjectMeta.Namespace).Delete(job.ObjectMeta.Name, &metav1.DeleteOptions{}); err != nil {
 		log.Println(err)
 	}
+}
+
+func shouldDeleteJob(job *v1.Job) bool {
+	return job.Status.CompletionTime != nil && ((job.Status.Succeeded > 0 && job.Status.Failed == 0) || (timeSinceCompletion(job) > (3 * 24 * time.Hour)))
+}
+
+func timeSinceCompletion(job *v1.Job) time.Duration {
+	return metav1.Now().Time.Sub(job.Status.CompletionTime.Time)
 }
