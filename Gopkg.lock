@@ -140,12 +140,6 @@
   revision = "5b9ff866471762aa2ab2dced63c9fb6f53921342"
 
 [[projects]]
-  name = "github.com/lwolf/kube-cleanup-operator"
-  packages = ["pkg/controller"]
-  revision = "adaf0c8bfb851847b3f684fb4e61de8ae1c9c91c"
-  version = "v0.1"
-
-[[projects]]
   branch = "master"
   name = "github.com/mailru/easyjson"
   packages = ["buffer","jlexer","jwriter"]
@@ -237,6 +231,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "6fe180be2c312646b1b1c7d720b44f7982676e681a465920b30e1b38bbbc6ef4"
+  inputs-digest = "692bdd871d5d6c76a5f13578eb8506cc251e0f1a2d1cf9bcae628c1affb21ea0"
   solver-name = "gps-cdcl"
   solver-version = 1
