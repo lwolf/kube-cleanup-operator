@@ -9,10 +9,11 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/lwolf/kube-cleanup-operator/pkg/controller"
+	"github.com/aalubin/kube-cleanup-operator/pkg/controller"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
+	"strconv"
 )
 
 func main() {
@@ -28,6 +29,8 @@ func main() {
 
 	runOutsideCluster := flag.Bool("run-outside-cluster", false, "Set this flag when running outside of the cluster.")
 	namespace := flag.String("namespace", "", "Watch only this namespaces")
+	keepSuccessDays := flag.Int("keep-successful", -1, "Number of days to keep successful jobs, -1 - forever (default), 0 - never, >0 number of days")
+	keepFailedDays := flag.Int("keep-failures", 0, "Number of days to keep faild jobs, -1 - forever 0 - never (default), >0 number of days")
 	flag.Parse()
 
 	// Create clientset for interacting with the kubernetes cluster
@@ -39,9 +42,11 @@ func main() {
 
 	options := map[string]string{
 		"namespace": *namespace,
+		"keepSuccessDays": strconv.Itoa(*keepSuccessDays),
+		"keepFailedDays": strconv.Itoa(*keepFailedDays),
 	}
 
-	log.Printf("Configured namespace: '%s'", options["namespace"])
+	log.Printf("Configured namespace: '%s', keepSuccessDays: %d, keepFailedDays: %d", options["namespace"], *keepSuccessDays, *keepFailedDays)
 	log.Printf("Starting controller...")
 
 	go controller.NewPodController(clientset, options).Run(stop, wg)
@@ -74,3 +79,4 @@ func newClientSet(runOutsideCluster bool) (*kubernetes.Clientset, error) {
 
 	return kubernetes.NewForConfig(config)
 }
+
