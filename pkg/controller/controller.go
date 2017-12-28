@@ -138,13 +138,13 @@ func (c *PodController) getExecutionTimeDays(podObj *v1.Pod) (executionTimeDays 
 func (c *PodController) deleteObjects(podObj *v1.Pod, createdMeta CreatedByAnnotation) {
 	log.Printf("Going to delete pod '%s'", podObj.Name)
 	// Delete Pod
-	//var po metav1.DeleteOptions
-	//c.kclient.CoreV1().Pods(podObj.Namespace).Delete(podObj.Name, &po)
+	var po metav1.DeleteOptions
+	c.kclient.CoreV1().Pods(podObj.Namespace).Delete(podObj.Name, &po)
 
 	log.Printf("Going to delete job '%s'", createdMeta.Reference.Name)
 	// Delete Job itself
-	//var jo metav1.DeleteOptions
-	//c.kclient.BatchV1Client.Jobs(createdMeta.Reference.Namespace).Delete(createdMeta.Reference.Name, &jo)
+	var jo metav1.DeleteOptions
+	c.kclient.BatchV1Client.Jobs(createdMeta.Reference.Namespace).Delete(createdMeta.Reference.Name, &jo)
 
 	return
 
