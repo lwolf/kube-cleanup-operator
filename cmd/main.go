@@ -29,8 +29,9 @@ func main() {
 
 	runOutsideCluster := flag.Bool("run-outside-cluster", false, "Set this flag when running outside of the cluster.")
 	namespace := flag.String("namespace", "", "Watch only this namespaces")
-	keepSuccessDays := flag.Int("keep-successful", -1, "Number of days to keep successful jobs, -1 - forever (default), 0 - never, >0 number of days")
-	keepFailedDays := flag.Int("keep-failures", 0, "Number of days to keep faild jobs, -1 - forever 0 - never (default), >0 number of days")
+	keepSuccessHours := flag.Int("keep-successful", 0, "Number of hours to keep successful jobs, -1 - forever, 0 - never (default), >0 number of hours")
+	keepFailedHours := flag.Int("keep-failures", -1, "Number of hours to keep faild jobs, -1 - forever (default) 0 - never, >0 number of hours")
+	dryRun := flag.Bool("dry-run", false, "Print only, do not delete anything.")
 	flag.Parse()
 
 	// Create clientset for interacting with the kubernetes cluster
@@ -42,11 +43,14 @@ func main() {
 
 	options := map[string]string{
 		"namespace": *namespace,
-		"keepSuccessDays": strconv.Itoa(*keepSuccessDays),
-		"keepFailedDays": strconv.Itoa(*keepFailedDays),
+		"keepSuccessHours": strconv.Itoa(*keepSuccessHours),
+		"keepFailedHours": strconv.Itoa(*keepFailedHours),
+		"dryRun": strconv.FormatBool(*dryRun),
 	}
-
-	log.Printf("Configured namespace: '%s', keepSuccessDays: %d, keepFailedDays: %d", options["namespace"], *keepSuccessDays, *keepFailedDays)
+	if (*dryRun){
+		log.Println("Performing dry run...")
+	}
+	log.Printf("Configured namespace: '%s', keepSuccessHours: %d, keepFailedHours: %d", options["namespace"], *keepSuccessHours, *keepFailedHours)
 	log.Printf("Starting controller...")
 
 	go controller.NewPodController(clientset, options).Run(stop, wg)
@@ -79,4 +83,3 @@ func newClientSet(runOutsideCluster bool) (*kubernetes.Clientset, error) {
 
 	return kubernetes.NewForConfig(config)
 }
-

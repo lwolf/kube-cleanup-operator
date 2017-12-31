@@ -39,8 +39,9 @@ type CreatedByAnnotation struct {
 func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *PodController {
 	podWatcher := &PodController{}
 
-	keepSuccessDays, _ := strconv.Atoi(opts["keepSuccessDays"])
-	keepFailedDays, _ := strconv.Atoi(opts["keepFailedDays"])
+	keepSuccessHours, _ := strconv.Atoi(opts["keepSuccessHours"])
+	keepFailedHours, _ 	:= strconv.Atoi(opts["keepFailedHours"])
+	dryRun, _ 			:= strconv.ParseBool(opts["dryRun"])
 	// Create informer for watching Namespaces
 	podInformer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
@@ -57,11 +58,11 @@ func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *Po
 	)
 	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(cur interface{}) {
-			podWatcher.doTheMagic(cur, keepSuccessDays, keepFailedDays)
+			podWatcher.doTheMagic(cur, keepSuccessHours, keepFailedHours, dryRun)
 		},
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
-				podWatcher.doTheMagic(cur, keepSuccessDays, keepFailedDays)
+				podWatcher.doTheMagic(cur, keepSuccessHours, keepFailedHours, dryRun)
 			}
 		},
 	})
@@ -88,7 +89,7 @@ func (c *PodController) Run(stopCh <-chan struct{}, wg *sync.WaitGroup) {
 	<-stopCh
 }
 
-func (c *PodController) doTheMagic(cur interface{}, keepSuccessDays int, keepFailedDays int) {
+func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFailedHours int, dryRun bool) {
 	podObj := cur.(*v1.Pod)
 	// handle jobs only
 	var createdMeta CreatedByAnnotation
@@ -102,25 +103,25 @@ func (c *PodController) doTheMagic(cur interface{}, keepSuccessDays int, keepFai
 		return
 	}
 
-	executionTimeDays := c.getExecutionTimeDays(podObj)
-	log.Printf("Checking pod %s with %s status that was executed %f days ago", podObj.Name, podObj.Status.Phase, executionTimeDays)
+	executionTimeHours := c.getExecutionTimeHours(podObj)
+	log.Printf("Checking pod %s with %s status that was executed %f hours ago", podObj.Name, podObj.Status.Phase, executionTimeHours)
 	switch podObj.Status.Phase{
 	case v1.PodSucceeded:
-		if (keepSuccessDays == 0 || (keepSuccessDays > 0 && executionTimeDays > float32(keepSuccessDays))){
-			c.deleteObjects(podObj, createdMeta)
+		if keepSuccessHours == 0 || (keepSuccessHours > 0 && executionTimeHours > float32(keepSuccessHours)){
+			c.deleteObjects(podObj, createdMeta, dryRun)
 		}
 	case v1.PodFailed:
-		if (keepFailedDays == 0 || (keepFailedDays > 0 && executionTimeDays > float32(keepFailedDays))){
-			c.deleteObjects(podObj, createdMeta)
+		if keepFailedHours == 0 || (keepFailedHours > 0 && executionTimeHours > float32(keepFailedHours)){
+			c.deleteObjects(podObj, createdMeta, dryRun)
 		}
 	default:
 		return
 	}
 }
 
-// method to calcualte the days that passed since the pod's excecution end time
-func (c *PodController) getExecutionTimeDays(podObj *v1.Pod) (executionTimeDays float32){
-	executionTimeDays = 0.0
+// method to calcualte the hours that passed since the pod's excecution end time
+func (c *PodController) getExecutionTimeHours(podObj *v1.Pod) (executionTimeHours float32){
+	executionTimeHours = 0.0
 	currentUnixTime := time.Now().Unix()
 	podConditions := podObj.Status.Conditions
 	var pc v1.PodCondition
@@ -128,24 +129,30 @@ func (c *PodController) getExecutionTimeDays(podObj *v1.Pod) (executionTimeDays 
 		// Looking for the time when pod's condition "Ready" became "false" (equals end of execution)
 		if pc.Type == v1.PodReady && pc.Status == v1.ConditionFalse{
 			executionTimeUnix := pc.LastTransitionTime.Unix()
-			executionTimeDays = (float32(currentUnixTime) - float32(executionTimeUnix)) / float32(86400)
+			executionTimeHours = (float32(currentUnixTime) - float32(executionTimeUnix)) / float32(3600)
 		}
 	}
 
 	return
 }
 
-func (c *PodController) deleteObjects(podObj *v1.Pod, createdMeta CreatedByAnnotation) {
-	log.Printf("Going to delete pod '%s'", podObj.Name)
+func (c *PodController) deleteObjects(podObj *v1.Pod, createdMeta CreatedByAnnotation, dryRun bool) {
 	// Delete Pod
-	var po metav1.DeleteOptions
-	c.kclient.CoreV1().Pods(podObj.Namespace).Delete(podObj.Name, &po)
-
-	log.Printf("Going to delete job '%s'", createdMeta.Reference.Name)
+	if !dryRun {
+		log.Printf("Deleting pod '%s'", podObj.Name)
+		var po metav1.DeleteOptions
+		c.kclient.CoreV1().Pods(podObj.Namespace).Delete(podObj.Name, &po)
+	}else{
+		log.Printf("Pod '%s' would have been deleted", podObj.Name)
+	}
 	// Delete Job itself
-	var jo metav1.DeleteOptions
-	c.kclient.BatchV1Client.Jobs(createdMeta.Reference.Namespace).Delete(createdMeta.Reference.Name, &jo)
-
+	if !dryRun {
+		log.Printf("Deleting job '%s'", createdMeta.Reference.Name)
+		var jo metav1.DeleteOptions
+		c.kclient.BatchV1Client.Jobs(createdMeta.Reference.Namespace).Delete(createdMeta.Reference.Name, &jo)
+	} else{
+		log.Printf("Job '%s' would have been deleted", createdMeta.Reference.Name)
+	}
 	return
 
 }
