@@ -6,11 +6,11 @@ install:
 - make install_deps
 
 script:
-- make bin/linux/kube-cleanup-operator
-- make bin/darwin/kube-cleanup-operator
+- NAME=GOOS=linux GOARCH=amd64 go build -o bin/kube-cleanup-operator-linux-amd64 ./cmd
+- NAME=GOOS=darwin GOARCH=amd64 go build -o bin/kube-cleanup-operator-darwin-amd64 ./cmd
 - mkdir bin/release
-- mv bin/linux/kube-cleanup-operator bin/release/kube-cleanup-operator-linux
-- mv bin/darwin/kube-cleanup-operator bin/release/kube-cleanup-operator-darwin
+- mv bin/kube-cleanup-operator-linux-amd64 bin/release/kube-cleanup-operator-linux-amd64
+- mv bin/kube-cleanup-operator-darwin-amd64 bin/release/kube-cleanup-operator-darwin-amd64
 
 deploy:
   provider: releases
