@@ -49,6 +49,7 @@ func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *Po
 				return kclient.CoreV1().Pods(opts["namespace"]).List(options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+
 				return kclient.CoreV1().Pods(opts["namespace"]).Watch(options)
 			},
 		},
@@ -95,11 +96,6 @@ func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFa
 	var createdMeta CreatedByAnnotation
 	json.Unmarshal([]byte(podObj.ObjectMeta.Annotations["kubernetes.io/created-by"]), &createdMeta)
 	if createdMeta.Reference.Kind != "Job" {
-		return
-	}
-	// if restartCount is not 0, do not delete
-	restartCounts := podObj.Status.ContainerStatuses[0].RestartCount
-	if restartCounts != 0 {
 		return
 	}
 
