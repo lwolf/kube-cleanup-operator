@@ -10,9 +10,9 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"log"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
-	"strconv"
 )
 
 // PodController watches the kubernetes api for changes to Pods and
@@ -40,8 +40,8 @@ func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *Po
 	podWatcher := &PodController{}
 
 	keepSuccessHours, _ := strconv.Atoi(opts["keepSuccessHours"])
-	keepFailedHours, _ 	:= strconv.Atoi(opts["keepFailedHours"])
-	dryRun, _ 			:= strconv.ParseBool(opts["dryRun"])
+	keepFailedHours, _ := strconv.Atoi(opts["keepFailedHours"])
+	dryRun, _ := strconv.ParseBool(opts["dryRun"])
 	// Create informer for watching Namespaces
 	podInformer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
@@ -101,13 +101,13 @@ func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFa
 
 	executionTimeHours := c.getExecutionTimeHours(podObj)
 	log.Printf("Checking pod %s with %s status that was executed %f hours ago", podObj.Name, podObj.Status.Phase, executionTimeHours)
-	switch podObj.Status.Phase{
+	switch podObj.Status.Phase {
 	case v1.PodSucceeded:
-		if keepSuccessHours == 0 || (keepSuccessHours > 0 && executionTimeHours > float32(keepSuccessHours)){
+		if keepSuccessHours == 0 || (keepSuccessHours > 0 && executionTimeHours > float32(keepSuccessHours)) {
 			c.deleteObjects(podObj, createdMeta, dryRun)
 		}
 	case v1.PodFailed:
-		if keepFailedHours == 0 || (keepFailedHours > 0 && executionTimeHours > float32(keepFailedHours)){
+		if keepFailedHours == 0 || (keepFailedHours > 0 && executionTimeHours > float32(keepFailedHours)) {
 			c.deleteObjects(podObj, createdMeta, dryRun)
 		}
 	default:
@@ -116,14 +116,14 @@ func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFa
 }
 
 // method to calcualte the hours that passed since the pod's excecution end time
-func (c *PodController) getExecutionTimeHours(podObj *v1.Pod) (executionTimeHours float32){
+func (c *PodController) getExecutionTimeHours(podObj *v1.Pod) (executionTimeHours float32) {
 	executionTimeHours = 0.0
 	currentUnixTime := time.Now().Unix()
 	podConditions := podObj.Status.Conditions
 	var pc v1.PodCondition
-	for _, pc = range podConditions{
+	for _, pc = range podConditions {
 		// Looking for the time when pod's condition "Ready" became "false" (equals end of execution)
-		if pc.Type == v1.PodReady && pc.Status == v1.ConditionFalse{
+		if pc.Type == v1.PodReady && pc.Status == v1.ConditionFalse {
 			executionTimeUnix := pc.LastTransitionTime.Unix()
 			executionTimeHours = (float32(currentUnixTime) - float32(executionTimeUnix)) / float32(3600)
 		}
@@ -138,7 +138,7 @@ func (c *PodController) deleteObjects(podObj *v1.Pod, createdMeta CreatedByAnnot
 		log.Printf("Deleting pod '%s'", podObj.Name)
 		var po metav1.DeleteOptions
 		c.kclient.CoreV1().Pods(podObj.Namespace).Delete(podObj.Name, &po)
-	}else{
+	} else {
 		log.Printf("Pod '%s' would have been deleted", podObj.Name)
 	}
 	// Delete Job itself
@@ -146,7 +146,7 @@ func (c *PodController) deleteObjects(podObj *v1.Pod, createdMeta CreatedByAnnot
 		log.Printf("Deleting job '%s'", createdMeta.Reference.Name)
 		var jo metav1.DeleteOptions
 		c.kclient.BatchV1Client.Jobs(createdMeta.Reference.Namespace).Delete(createdMeta.Reference.Name, &jo)
-	} else{
+	} else {
 		log.Printf("Job '%s' would have been deleted", createdMeta.Reference.Name)
 	}
 	return

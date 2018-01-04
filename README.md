@@ -7,7 +7,6 @@ Controller listens for changes in Pods created by Jobs and deletes it on Complet
 Some defaults:
 * All Namespaces are monitored by default
 * Only Pods created by Jobs are monitored
-* Only Pods in Completed state with 0 restarts are deleted
 
 ## Usage
 

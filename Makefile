@@ -1,7 +1,7 @@
-NAME:= kube-cleanup-operator
+NAME := kube-cleanup-operator
 AUTHOR=lwolf
-VERSION=0.3
-REGISTRY := quay.io
+VERSION ?= 0.3
+REGISTRY ?= quay.io
 GIT_SHA=$(shell git --no-pager describe --always --dirty)
 BUILD_TIME=$(shell date '+%s')
 LFLAGS ?= -X main.gitsha=${GIT_SHA} -X main.compiled=${BUILD_TIME}
