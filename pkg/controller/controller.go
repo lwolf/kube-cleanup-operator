@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"encoding/json"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
@@ -41,6 +40,7 @@ func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *Po
 
 	keepSuccessHours, _ := strconv.Atoi(opts["keepSuccessHours"])
 	keepFailedHours, _ := strconv.Atoi(opts["keepFailedHours"])
+	keepPendingHours, _ := strconv.Atoi(opts["keepPendingHours"])
 	dryRun, _ := strconv.ParseBool(opts["dryRun"])
 	// Create informer for watching Namespaces
 	podInformer := cache.NewSharedIndexInformer(
@@ -59,11 +59,11 @@ func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *Po
 	)
 	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(cur interface{}) {
-			podWatcher.doTheMagic(cur, keepSuccessHours, keepFailedHours, dryRun)
+			podWatcher.doTheMagic(cur, keepSuccessHours, keepFailedHours, keepPendingHours, dryRun)
 		},
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
-				podWatcher.doTheMagic(cur, keepSuccessHours, keepFailedHours, dryRun)
+				podWatcher.doTheMagic(cur, keepSuccessHours, keepFailedHours, keepPendingHours, dryRun)
 			}
 		},
 	})
@@ -90,12 +90,19 @@ func (c *PodController) Run(stopCh <-chan struct{}, wg *sync.WaitGroup) {
 	<-stopCh
 }
 
-func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFailedHours int, dryRun bool) {
+func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFailedHours int, keepPendingHours int, dryRun bool) {
 	podObj := cur.(*v1.Pod)
-	// handle jobs only
-	var createdMeta CreatedByAnnotation
-	json.Unmarshal([]byte(podObj.ObjectMeta.Annotations["kubernetes.io/created-by"]), &createdMeta)
-	if createdMeta.Reference.Kind != "Job" {
+
+	parentJobName := ""
+
+	// Going all over the owners, looking for a job, usually there is only one owner
+	for _,ow:= range podObj.OwnerReferences{
+		if ow.Kind == "Job"{
+			parentJobName = ow.Name
+		}
+	}
+	// If we couldn't extract the job's name, return
+	if parentJobName == "" {
 		return
 	}
 
@@ -104,11 +111,15 @@ func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFa
 	switch podObj.Status.Phase {
 	case v1.PodSucceeded:
 		if keepSuccessHours == 0 || (keepSuccessHours > 0 && executionTimeHours > float32(keepSuccessHours)) {
-			c.deleteObjects(podObj, createdMeta, dryRun)
+			c.deleteObjects(podObj, parentJobName, dryRun)
 		}
 	case v1.PodFailed:
 		if keepFailedHours == 0 || (keepFailedHours > 0 && executionTimeHours > float32(keepFailedHours)) {
-			c.deleteObjects(podObj, createdMeta, dryRun)
+			c.deleteObjects(podObj, parentJobName, dryRun)
+		}
+	case v1.PodPending:
+		if keepPendingHours == 0 || (keepPendingHours > 0 && executionTimeHours > float32(keepPendingHours)) {
+			c.deleteObjects(podObj, parentJobName, dryRun)
 		}
 	default:
 		return
@@ -132,7 +143,7 @@ func (c *PodController) getExecutionTimeHours(podObj *v1.Pod) (executionTimeHour
 	return
 }
 
-func (c *PodController) deleteObjects(podObj *v1.Pod, createdMeta CreatedByAnnotation, dryRun bool) {
+func (c *PodController) deleteObjects(podObj *v1.Pod, parentJobName string, dryRun bool) {
 	// Delete Pod
 	if !dryRun {
 		log.Printf("Deleting pod '%s'", podObj.Name)
@@ -143,12 +154,12 @@ func (c *PodController) deleteObjects(podObj *v1.Pod, createdMeta CreatedByAnnot
 	}
 	// Delete Job itself
 	if !dryRun {
-		log.Printf("Deleting job '%s'", createdMeta.Reference.Name)
+		log.Printf("Deleting job '%s'", parentJobName)
 		var jo metav1.DeleteOptions
-		c.kclient.BatchV1Client.Jobs(createdMeta.Reference.Namespace).Delete(createdMeta.Reference.Name, &jo)
+		c.kclient.BatchV1Client.Jobs(podObj.Namespace).Delete(parentJobName, &jo)
 	} else {
-		log.Printf("Job '%s' would have been deleted", createdMeta.Reference.Name)
+		log.Printf("Job '%s' would have been deleted", parentJobName)
 	}
 	return
-
 }
+
