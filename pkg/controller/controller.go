@@ -96,8 +96,8 @@ func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFa
 	parentJobName := ""
 
 	// Going all over the owners, looking for a job, usually there is only one owner
-	for _,ow:= range podObj.OwnerReferences{
-		if ow.Kind == "Job"{
+	for _, ow := range podObj.OwnerReferences {
+		if ow.Kind == "Job" {
 			parentJobName = ow.Name
 		}
 	}
@@ -162,4 +162,3 @@ func (c *PodController) deleteObjects(podObj *v1.Pod, parentJobName string, dryR
 	}
 	return
 }
-

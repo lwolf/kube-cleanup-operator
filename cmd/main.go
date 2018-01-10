@@ -11,8 +11,8 @@ import (
 
 	"github.com/lwolf/kube-cleanup-operator/pkg/controller"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
+	"k8s.io/client-go/tools/clientcmd"
 	"strconv"
 )
 
@@ -43,13 +43,13 @@ func main() {
 	}
 
 	options := map[string]string{
-		"namespace": 		*namespace,
-		"keepSuccessHours":	strconv.Itoa(*keepSuccessHours),
-		"keepFailedHours": 	strconv.Itoa(*keepFailedHours),
-		"keepPendingHours":	strconv.Itoa(*keepPendingHours),
-		"dryRun": 			strconv.FormatBool(*dryRun),
+		"namespace":        *namespace,
+		"keepSuccessHours": strconv.Itoa(*keepSuccessHours),
+		"keepFailedHours":  strconv.Itoa(*keepFailedHours),
+		"keepPendingHours": strconv.Itoa(*keepPendingHours),
+		"dryRun":           strconv.FormatBool(*dryRun),
 	}
-	if *dryRun{
+	if *dryRun {
 		log.Println("Performing dry run...")
 	}
 	log.Printf("Configured namespace: '%s', keepSuccessHours: %d, keepFailedHours: %d", options["namespace"], *keepSuccessHours, *keepFailedHours)
