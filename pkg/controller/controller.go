@@ -100,6 +100,14 @@ func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFa
 		if ow.Kind == "Job" {
 			parentJobName = ow.Name
 		}
+		var gopts metav1.GetOptions
+		job,_ :=c.kclient.BatchV1Client.Jobs(podObj.Namespace).Get(ow.Name, gopts)
+		log.Printf("The longth of jw is %d", len(job.OwnerReferences))
+		for _, jw := range job.OwnerReferences {
+			log.Printf("------  Job owner name: %s kind: %s  ------", jw.Name, jw.Kind)
+		}
+
+
 	}
 	// If we couldn't extract the job's name, return
 	if parentJobName == "" {
@@ -118,7 +126,7 @@ func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFa
 			c.deleteObjects(podObj, parentJobName, dryRun)
 		}
 	case v1.PodPending:
-		if keepPendingHours == 0 || (keepPendingHours > 0 && executionTimeHours > float32(keepPendingHours)) {
+		if keepPendingHours > 0 && executionTimeHours > float32(keepPendingHours) {
 			c.deleteObjects(podObj, parentJobName, dryRun)
 		}
 	default:

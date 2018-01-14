@@ -9,7 +9,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/lwolf/kube-cleanup-operator/pkg/controller"
+	"github.com/aalubin/kube-cleanup-operator/pkg/controller"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 	"k8s.io/client-go/tools/clientcmd"
@@ -31,7 +31,7 @@ func main() {
 	namespace := flag.String("namespace", "", "Watch only this namespaces")
 	keepSuccessHours := flag.Int("keep-successful", 0, "Number of hours to keep successful jobs, -1 - forever, 0 - never (default), >0 number of hours")
 	keepFailedHours := flag.Int("keep-failures", -1, "Number of hours to keep faild jobs, -1 - forever (default) 0 - never, >0 number of hours")
-	keepPendingHours := flag.Int("keep-pending", -1, "Number of hours to keep pending jobs, -1 - forever (default) 0 - never, >0 number of hours")
+	keepPendingHours := flag.Int("keep-pending", -1, "Number of hours to keep pending jobs, -1 - forever (default) >0 number of hours")
 	dryRun := flag.Bool("dry-run", false, "Print only, do not delete anything.")
 	flag.Parse()
 

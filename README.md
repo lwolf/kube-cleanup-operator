@@ -52,7 +52,7 @@ Usage of ./bin/kube-cleanup-operator:
   -keep-pending
         the number of hours to keep a pending job
         -1 - forever (default)
-        0  - never
+        0  - forever
         >0 - number of hours
   -dry run
         Perform dry run, print only
