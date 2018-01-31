@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
@@ -42,6 +43,12 @@ func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *Po
 	keepFailedHours, _ := strconv.Atoi(opts["keepFailedHours"])
 	keepPendingHours, _ := strconv.Atoi(opts["keepPendingHours"])
 	dryRun, _ := strconv.ParseBool(opts["dryRun"])
+	version, err := kclient.ServerVersion()
+
+	if err != nil{
+		log.Fatalf("Failed to retrieve server version %v", err)
+	}
+
 	// Create informer for watching Namespaces
 	podInformer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
@@ -59,11 +66,11 @@ func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *Po
 	)
 	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(cur interface{}) {
-			podWatcher.doTheMagic(cur, keepSuccessHours, keepFailedHours, keepPendingHours, dryRun)
+			podWatcher.doTheMagic(cur, keepSuccessHours, keepFailedHours, keepPendingHours, dryRun, version.Minor)
 		},
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
-				podWatcher.doTheMagic(cur, keepSuccessHours, keepFailedHours, keepPendingHours, dryRun)
+				podWatcher.doTheMagic(cur, keepSuccessHours, keepFailedHours, keepPendingHours, dryRun, version.Minor)
 			}
 		},
 	})
@@ -90,27 +97,13 @@ func (c *PodController) Run(stopCh <-chan struct{}, wg *sync.WaitGroup) {
 	<-stopCh
 }
 
-func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFailedHours int, keepPendingHours int, dryRun bool) {
+func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFailedHours int, keepPendingHours int, dryRun bool, version string) {
+
 	podObj := cur.(*v1.Pod)
-
-	parentJobName := ""
-
-	// Going all over the owners, looking for a job, usually there is only one owner
-	for _, ow := range podObj.OwnerReferences {
-		if ow.Kind == "Job" {
-			parentJobName = ow.Name
-		}
-		var gopts metav1.GetOptions
-		job,_ :=c.kclient.BatchV1Client.Jobs(podObj.Namespace).Get(ow.Name, gopts)
-		log.Printf("The longth of jw is %d", len(job.OwnerReferences))
-		for _, jw := range job.OwnerReferences {
-			log.Printf("------  Job owner name: %s kind: %s  ------", jw.Name, jw.Kind)
-		}
-
-
-	}
-	// If we couldn't extract the job's name, return
-	if parentJobName == "" {
+	parentJobName := c.getParentJobName(podObj, version)
+	// if we couldn't find a prent job name, ignore this pod
+	if parentJobName == ""{
+		log.Printf("Pod %s was not created by a job, ignoring.", podObj.Name)
 		return
 	}
 
@@ -167,6 +160,27 @@ func (c *PodController) deleteObjects(podObj *v1.Pod, parentJobName string, dryR
 		c.kclient.BatchV1Client.Jobs(podObj.Namespace).Delete(parentJobName, &jo)
 	} else {
 		log.Printf("Job '%s' would have been deleted", parentJobName)
+	}
+	return
+}
+
+
+func (c *PodController) getParentJobName(podObj *v1.Pod, version string) (parentJobName string) {
+
+	intVersion, _ := strconv.Atoi(version);
+	if intVersion < 8 {
+		var createdMeta CreatedByAnnotation
+		json.Unmarshal([]byte(podObj.ObjectMeta.Annotations["kubernetes.io/created-by"]), &createdMeta)
+		if createdMeta.Reference.Kind == "Job" {
+			parentJobName = createdMeta.Reference.Name
+		}
+	}else {
+		// Going all over the owners, looking for a job, usually there is only one owner
+		for _, ow := range podObj.OwnerReferences {
+			if ow.Kind == "Job" {
+				parentJobName = ow.Name
+			}
+		}
 	}
 	return
 }
