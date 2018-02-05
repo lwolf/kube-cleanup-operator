@@ -8,6 +8,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/apimachinery/pkg/version"
 	"log"
 	"reflect"
 	"strconv"
@@ -66,11 +67,11 @@ func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *Po
 	)
 	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(cur interface{}) {
-			podWatcher.doTheMagic(cur, keepSuccessHours, keepFailedHours, keepPendingHours, dryRun, version.Minor)
+			podWatcher.doTheMagic(cur, keepSuccessHours, keepFailedHours, keepPendingHours, dryRun, *version)
 		},
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
-				podWatcher.doTheMagic(cur, keepSuccessHours, keepFailedHours, keepPendingHours, dryRun, version.Minor)
+				podWatcher.doTheMagic(cur, keepSuccessHours, keepFailedHours, keepPendingHours, dryRun, *version)
 			}
 		},
 	})
@@ -97,7 +98,7 @@ func (c *PodController) Run(stopCh <-chan struct{}, wg *sync.WaitGroup) {
 	<-stopCh
 }
 
-func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFailedHours int, keepPendingHours int, dryRun bool, version string) {
+func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFailedHours int, keepPendingHours int, dryRun bool, version version.Info) {
 
 	podObj := cur.(*v1.Pod)
 	parentJobName := c.getParentJobName(podObj, version)
@@ -165,10 +166,17 @@ func (c *PodController) deleteObjects(podObj *v1.Pod, parentJobName string, dryR
 }
 
 
-func (c *PodController) getParentJobName(podObj *v1.Pod, version string) (parentJobName string) {
+func (c *PodController) getParentJobName(podObj *v1.Pod, version version.Info) (parentJobName string) {
 
-	intVersion, _ := strconv.Atoi(version);
-	if intVersion < 8 {
+	oldVersion := false
+
+	major,_ := strconv.Atoi(version.Major)
+	minor,_ := strconv.Atoi(version.Minor)
+	if major < 2 && minor < 8{
+		oldVersion = true
+	}
+
+	if oldVersion {
 		var createdMeta CreatedByAnnotation
 		json.Unmarshal([]byte(podObj.ObjectMeta.Annotations["kubernetes.io/created-by"]), &createdMeta)
 		if createdMeta.Reference.Kind == "Job" {
