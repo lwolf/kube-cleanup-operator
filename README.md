@@ -40,17 +40,22 @@ Usage of ./bin/kube-cleanup-operator:
   -run-outside-cluster
     	Set this flag when running outside of the cluster.
   -keep-successful
-        the number of days to keep a succesfull job
+        the number of hours to keep a succesfull job
         -1 - forever 
         0  - never (default)
-        >0 - number of days
+        >0 - number of hours
   -keep-failures
-        the number of days to keep a succesfull job
+        the number of hours to keep a succesfull job
         -1 - forever (default)
         0  - never
-        >0 - number of days
+        >0 - number of hours
+  -keep-pending
+        the number of hours to keep a pending job
+        -1 - forever (default)
+        0  - forever
+        >0 - number of hours
   -dry run
         Perform dry run, print only
         
-$ ./bin/kube-cleanup-operator --run-outside-cluster --namespace=default --keep-successful=-1 --keep-failure=0
+$ ./bin/kube-cleanup-operator --run-outside-cluster --namespace=default --keep-successful=0 --keep-failure=-1 --keep-pending=-1
 ```
