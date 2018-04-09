@@ -2,7 +2,6 @@ package controller
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"reflect"
 	"regexp"
@@ -182,7 +181,6 @@ func (c *PodController) getParentJobName(podObj *v1.Pod, version version.Info) (
 
 	if oldVersion {
 		var createdMeta CreatedByAnnotation
-		fmt.Println(podObj.ObjectMeta.Annotations)
 		json.Unmarshal([]byte(podObj.ObjectMeta.Annotations["kubernetes.io/created-by"]), &createdMeta)
 		if createdMeta.Reference.Kind == "Job" {
 			parentJobName = createdMeta.Reference.Name
