@@ -172,8 +172,16 @@ func (c *PodController) getParentJobName(podObj *v1.Pod, version version.Info) (
 	oldVersion := false
 
 	major, _ := strconv.Atoi(version.Major)
+
+	var minor int
 	re := regexp.MustCompile("[0-9]+")
-	minor, _ := strconv.Atoi(re.FindAllString(version.Minor, -1)[0])
+	m := re.FindAllString(version.Minor, 1)
+	if len(m) != 0 {
+		minor, _ = strconv.Atoi(m[0])
+	} else {
+		log.Printf("failed to parse minor version %s", version.Minor)
+		minor = 0
+	}
 
 	if major < 2 && minor < 8 {
 		oldVersion = true
