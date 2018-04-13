@@ -2,18 +2,20 @@ package controller
 
 import (
 	"encoding/json"
+	"log"
+	"reflect"
+	"regexp"
+	"strconv"
+	"sync"
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/apimachinery/pkg/version"
-	"log"
-	"reflect"
-	"strconv"
-	"sync"
-	"time"
 )
 
 // PodController watches the kubernetes api for changes to Pods and
@@ -46,7 +48,7 @@ func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *Po
 	dryRun, _ := strconv.ParseBool(opts["dryRun"])
 	version, err := kclient.ServerVersion()
 
-	if err != nil{
+	if err != nil {
 		log.Fatalf("Failed to retrieve server version %v", err)
 	}
 
@@ -103,7 +105,7 @@ func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFa
 	podObj := cur.(*v1.Pod)
 	parentJobName := c.getParentJobName(podObj, version)
 	// if we couldn't find a prent job name, ignore this pod
-	if parentJobName == ""{
+	if parentJobName == "" {
 		log.Printf("Pod %s was not created by a job, ignoring.", podObj.Name)
 		return
 	}
@@ -165,14 +167,23 @@ func (c *PodController) deleteObjects(podObj *v1.Pod, parentJobName string, dryR
 	return
 }
 
-
 func (c *PodController) getParentJobName(podObj *v1.Pod, version version.Info) (parentJobName string) {
 
 	oldVersion := false
 
-	major,_ := strconv.Atoi(version.Major)
-	minor,_ := strconv.Atoi(version.Minor)
-	if major < 2 && minor < 8{
+	major, _ := strconv.Atoi(version.Major)
+
+	var minor int
+	re := regexp.MustCompile("[0-9]+")
+	m := re.FindAllString(version.Minor, 1)
+	if len(m) != 0 {
+		minor, _ = strconv.Atoi(m[0])
+	} else {
+		log.Printf("failed to parse minor version %s", version.Minor)
+		minor = 0
+	}
+
+	if major < 2 && minor < 8 {
 		oldVersion = true
 	}
 
@@ -182,7 +193,7 @@ func (c *PodController) getParentJobName(podObj *v1.Pod, version version.Info) (
 		if createdMeta.Reference.Kind == "Job" {
 			parentJobName = createdMeta.Reference.Name
 		}
-	}else {
+	} else {
 		// Going all over the owners, looking for a job, usually there is only one owner
 		for _, ow := range podObj.OwnerReferences {
 			if ow.Kind == "Job" {
