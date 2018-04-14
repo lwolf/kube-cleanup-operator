@@ -33,6 +33,7 @@ kubectl create -f https://raw.githubusercontent.com/kubernetes/kubernetes.github
 ## Docker images
 
 ```docker pull lwolf/kube-cleanup-operator```
+
 ```docker pull quay.io/lwolf/kube-cleanup-operator```
 
 ## Development
