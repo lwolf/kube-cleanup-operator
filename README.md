@@ -1,5 +1,8 @@
 # Kubernetes cleanup operator
+
 [![Build Status](https://travis-ci.org/lwolf/kube-cleanup-operator.svg?branch=master)](https://travis-ci.org/lwolf/kube-cleanup-operator)
+[![Go Report Card](https://goreportcard.com/badge/github.com/lwolf/kube-cleanup-operator)](https://goreportcard.com/report/github.com/lwolf/kube-cleanup-operator)
+[![Docker Repository on Quay](https://quay.io/repository/lwolf/kube-cleanup-operator/status "Docker Repository on Quay")](https://quay.io/repository/lwolf/kube-cleanup-operator)
 
 Experimental Kubernetes Operator to automatically delete completed Jobs and their Pods.
 Controller listens for changes in Pods created by Jobs and deletes it on Completion.
@@ -27,6 +30,10 @@ kubectl logs -f $(kubectl get pods --namespace default -l "run=cleanup-operator"
 kubectl create -f https://raw.githubusercontent.com/kubernetes/kubernetes.github.io/master/docs/concepts/workloads/controllers/job.yaml
 ```
 
+## Docker images
+
+```docker pull lwolf/kube-cleanup-operator```
+```docker pull quay.io/lwolf/kube-cleanup-operator```
 
 ## Development
 

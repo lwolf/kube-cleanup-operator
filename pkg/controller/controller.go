@@ -25,6 +25,7 @@ type PodController struct {
 	kclient     *kubernetes.Clientset
 }
 
+// CreatedByAnnotation type used to match pods created by job
 type CreatedByAnnotation struct {
 	Kind       string
 	ApiVersion string
@@ -130,7 +131,7 @@ func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFa
 	}
 }
 
-// method to calcualte the hours that passed since the pod's excecution end time
+// method to calculate the hours that passed since the pod's execution end time
 func (c *PodController) getExecutionTimeHours(podObj *v1.Pod) (executionTimeHours float32) {
 	executionTimeHours = 0.0
 	currentUnixTime := time.Now().Unix()
