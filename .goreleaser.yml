@@ -1,0 +1,47 @@
+# .goreleaser.yml
+# Build customization
+project_name: kube-cleanup-operator
+
+builds:
+  - binary: kube-cleanup-operator
+    main: ./cmd/main.go
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm
+      - arm64
+    goarm:
+       - 6
+       - 7
+    ignore:
+      - goos: darwin
+        goarch: arm
+      - goos: darwin
+        goarch: arm64
+
+release:
+  github:
+    owner: lwolf
+    name: kube-cleanup-operator
+  prerelease: true
+
+dockers:
+  - image: quay.io/lwolf/kube-cleanup-operator-amd64
+    dockerfile: Dockerfile
+    binary: kube-cleanup-operator
+    goos: linux
+    goarch: amd64
+    tag_templates:
+    - "{{ .Tag }}"
+  - image: quay.io/lwolf/kube-cleanup-operator-arm64
+    dockerfile: Dockerfile
+    binary: kube-cleanup-operator
+    goos: linux
+    goarch: arm64
+    tag_templates:
+    - "{{ .Tag }}"
+
+git:
+  short_hash: true

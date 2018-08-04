@@ -60,7 +60,6 @@ func NewPodController(kclient *kubernetes.Clientset, opts map[string]string) *Po
 				return kclient.CoreV1().Pods(opts["namespace"]).List(options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-
 				return kclient.CoreV1().Pods(opts["namespace"]).Watch(options)
 			},
 		},
@@ -107,7 +106,7 @@ func (c *PodController) doTheMagic(cur interface{}, keepSuccessHours int, keepFa
 	parentJobName := c.getParentJobName(podObj, version)
 	// if we couldn't find a prent job name, ignore this pod
 	if parentJobName == "" {
-		log.Printf("Pod %s was not created by a job, ignoring.", podObj.Name)
+		log.Printf("Pod %s was not created by a job... ignoring", podObj.Name)
 		return
 	}
 
@@ -155,7 +154,7 @@ func (c *PodController) deleteObjects(podObj *v1.Pod, parentJobName string, dryR
 		var po metav1.DeleteOptions
 		c.kclient.CoreV1().Pods(podObj.Namespace).Delete(podObj.Name, &po)
 	} else {
-		log.Printf("Pod '%s' would have been deleted", podObj.Name)
+		log.Printf("dry-run: Pod '%s' would have been deleted", podObj.Name)
 	}
 	// Delete Job itself
 	if !dryRun {
@@ -163,7 +162,7 @@ func (c *PodController) deleteObjects(podObj *v1.Pod, parentJobName string, dryR
 		var jo metav1.DeleteOptions
 		c.kclient.BatchV1Client.Jobs(podObj.Namespace).Delete(parentJobName, &jo)
 	} else {
-		log.Printf("Job '%s' would have been deleted", parentJobName)
+		log.Printf("dry-run: Job '%s' would have been deleted", parentJobName)
 	}
 	return
 }

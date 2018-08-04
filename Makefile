@@ -6,7 +6,7 @@ GIT_SHA=$(shell git --no-pager describe --always --dirty)
 BUILD_TIME=$(shell date '+%s')
 LFLAGS ?= -X main.gitsha=${GIT_SHA} -X main.compiled=${BUILD_TIME}
 ROOT_DIR=${PWD}
-GOVERSION ?= 1.9.2
+GOVERSION ?= 1.10.3
 HARDWARE=$(shell uname -m)
 
 .PHONY: authors changelog build docker static release install_deps
