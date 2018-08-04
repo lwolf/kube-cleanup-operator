@@ -1,24 +1,18 @@
 language: go
 go:
-- 1.9.x
-install:
-- go get -u github.com/golang/dep/cmd/dep
-- make install_deps
+- 1.10.x
 
-script:
-- NAME=GOOS=linux GOARCH=amd64 go build -o bin/kube-cleanup-operator-linux-amd64 ./cmd
-- NAME=GOOS=darwin GOARCH=amd64 go build -o bin/kube-cleanup-operator-darwin-amd64 ./cmd
-- mkdir bin/release
-- mv bin/kube-cleanup-operator-linux-amd64 bin/release/kube-cleanup-operator-linux-amd64
-- mv bin/kube-cleanup-operator-darwin-amd64 bin/release/kube-cleanup-operator-darwin-amd64
+# needed for the docker pipe
+services:
+- docker
+
+before_install:
+- docker login -u ${QUAY_LOGIN} -p ${QUAY_PASSWORD} quay.io
 
 deploy:
-  provider: releases
+- provider: script
   skip_cleanup: true
-  file_glob: true
-  api_key:
-    secure: pW2/HH28+KJKsVzsjvPLOgD+QE+MrKoTkJnx1+Vjqmoru7MnkCLrFK/E6N+dwtGutOTXmEBcngnF4az/3rsmUq4Fb8HDcYGko519MxE382c8aPBtSo51qRINmZ4Vvmlz9uL+tG4QfDjzR84GBwMCcNK0BO1CJRZh7uZHrNbMFXEFyYJjYIRk6EzxM3mVkM5Rl6gV9CajujDmPBi2tWjOdiQ22dD/2or63KxotFQUtM7fpXt+UO4Bq5Gd1Kv3s3AAOfAyJtmTQZ+Ice9QDSt0uVWukDeebkBxsELzUexiZmM6JHDrliqiswN0WNj33sMsXSmgA7mieBabKsJ2ZzyztFqIzm9ZvRkXFG2He0K6yx1Zy5GoaSljaUwf421E01njm1rk5mi3De7dDPrw98PuF+7siBgguGtkmtxlzmVhjAqr7AKLm0cEeq9bh2gk2eb8+KWWf/sfVtk9lAnnGRR11jc77XMTag/x8i68JKACD6DzL/IcWdWmOZDilYQvJM5iiSASw4z42pPjDybTuina+R/BPvk9W3apz7d/bueMr7eaPEw6xybiXEQ/Ys+LH3IPqaIwtgNjq1Y5JamsnWLa0DakDikUCmmXMhTCg4FIhIcjYmGcGlxNPB42BUBAF83WfmmkNjLbeFgcj0wuU0tPgDLONh6CLGThrBMGQ5T0gMw=
-  file:
-  - "bin/release/*"
+  script: curl -sL http://git.io/goreleaser | bash
   on:
     tags: true
+    condition: $TRAVIS_OS_NAME = linux
