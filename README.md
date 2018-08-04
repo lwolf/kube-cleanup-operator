@@ -43,7 +43,7 @@ $ make build
 $ ./bin/kube-cleanup-operator --help
 Usage of ./bin/kube-cleanup-operator:
   -namespace string
-    	Watch only this namespaces
+    	Watch only this namespaces (omit to operate clusterwide)
   -run-outside-cluster
     	Set this flag when running outside of the cluster.
   -keep-successful
@@ -61,7 +61,7 @@ Usage of ./bin/kube-cleanup-operator:
         -1 - forever (default)
         0  - forever
         >0 - number of hours
-  -dry run
+  -dry-run
         Perform dry run, print only
         
 $ ./bin/kube-cleanup-operator --run-outside-cluster --namespace=default --keep-successful=0 --keep-failure=-1 --keep-pending=-1
