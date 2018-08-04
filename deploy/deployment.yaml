@@ -24,7 +24,7 @@ spec:
       containers:
       - args:
         - --namespace=default
-        image: lwolf/kube-cleanup-operator
+        image: quay.io/lwolf/kube-cleanup-operator
         imagePullPolicy: Always
         name: cleanup-operator
       dnsPolicy: ClusterFirst

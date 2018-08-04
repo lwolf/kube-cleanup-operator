@@ -34,6 +34,7 @@ dockers:
     goarch: amd64
     tag_templates:
     - "{{ .Tag }}"
+    - "latest"
 
 git:
   short_hash: true
