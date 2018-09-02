@@ -51,7 +51,7 @@ Usage of ./bin/kube-cleanup-operator:
         0  - never (default)
         >0 - number of hours
   -keep-failures
-        the number of hours to keep a succesfull job
+        the number of hours to keep a failed job
         -1 - forever (default)
         0  - never
         >0 - number of hours
@@ -63,5 +63,5 @@ Usage of ./bin/kube-cleanup-operator:
   -dry-run
         Perform dry run, print only
         
-$ ./bin/kube-cleanup-operator --run-outside-cluster --namespace=default --keep-successful=0 --keep-failure=-1 --keep-pending=-1
+$ ./bin/kube-cleanup-operator --run-outside-cluster --namespace=default --keep-successful=0 --keep-failures=-1 --keep-pending=-1
 ```
