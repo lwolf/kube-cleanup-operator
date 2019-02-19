@@ -35,6 +35,3 @@ dockers:
     tag_templates:
     - "{{ .Tag }}"
     - "latest"
-
-git:
-  short_hash: true
