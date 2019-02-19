@@ -38,7 +38,7 @@ or you can build it yourself as follows:
 ```
 $ make install_deps
 $ make build
-$ cp bin/kube-cleanup-operator
+$ cp bin/kube-cleanup-operator .
 $ docker build .
 ```
 
