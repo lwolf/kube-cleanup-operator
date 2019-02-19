@@ -12,6 +12,7 @@ import (
 
 	"github.com/lwolf/kube-cleanup-operator/pkg/controller"
 	"k8s.io/client-go/kubernetes"
+	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp" // TODO: Add all auth providers
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 	"k8s.io/client-go/tools/clientcmd"
 )
