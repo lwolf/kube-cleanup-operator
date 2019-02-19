@@ -7,7 +7,7 @@ services:
 - docker
 
 before_install:
-- docker login -u ${QUAY_LOGIN} -p ${QUAY_PASSWORD} quay.io
+- echo "$QUAY_PASSWORD" | docker login -u "$QUAY_LOGIN" quay.io --password-stdin
 
 deploy:
 - provider: script
