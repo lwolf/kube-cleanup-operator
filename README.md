@@ -30,6 +30,38 @@ kubectl logs -f $(kubectl get pods --namespace default -l "run=cleanup-operator"
 kubectl create -f https://k8s.io/examples/controllers/job.yaml
 ```
 
+### Parameters
+```
+Usage of ./kube-cleanup-operator:
+  -alsologtostderr
+    	log to standard error as well as files
+  -dry-run
+    	Print only, do not delete anything.
+  -keep-failures int
+    	Number of hours to keep faild jobs, -1 - forever (default) 0 - never, >0 number of hours (default -1)
+  -keep-pending int
+    	Number of hours to keep pending jobs, -1 - forever (default) >0 number of hours (default -1)
+  -keep-successful int
+    	Number of hours to keep successful jobs, -1 - forever, 0 - never (default), >0 number of hours
+  -log_backtrace_at value
+    	when logging hits line file:N, emit a stack trace
+  -log_dir string
+    	If non-empty, write log files in this directory
+  -logtostderr
+    	log to standard error instead of files
+  -namespace string
+    	Watch only this namespaces
+  -run-outside-cluster
+    	Set this flag when running outside of the cluster.
+  -stderrthreshold value
+    	logs at or above this threshold go to stderr
+  -v value
+    	log level for V logs
+  -vmodule value
+    	comma-separated list of pattern=N settings for file-filtered logging
+```
+
+
 ## Docker images
 
 ```docker pull quay.io/lwolf/kube-cleanup-operator```
