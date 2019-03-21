@@ -28,11 +28,11 @@ release:
   draft: true
 
 dockers:
-  - image: quay.io/lwolf/kube-cleanup-operator
-    dockerfile: Dockerfile
-    binary: kube-cleanup-operator
+  - dockerfile: Dockerfile
+    binaries:
+      - kube-cleanup-operator
     goos: linux
     goarch: amd64
-    tag_templates:
-    - "{{ .Tag }}"
-    - "latest"
+    image_templates:
+    - 'quay.io/lwolf/kube-cleanup-operator:{{ .Tag }}'
+    - 'quay.io/lwolf/kube-cleanup-operator:latest'
