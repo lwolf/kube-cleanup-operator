@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"syscall"
 
@@ -40,23 +39,28 @@ func main() {
 	clientset, err := newClientSet(*runOutsideCluster)
 
 	if err != nil {
-		panic(err.Error())
+		log.Fatal(err.Error())
 	}
 
-	options := map[string]string{
-		"namespace":        *namespace,
-		"keepSuccessHours": strconv.Itoa(*keepSuccessHours),
-		"keepFailedHours":  strconv.Itoa(*keepFailedHours),
-		"keepPendingHours": strconv.Itoa(*keepPendingHours),
-		"dryRun":           strconv.FormatBool(*dryRun),
+	options := map[string]float64{
+		"keepSuccessHours": float64(*keepSuccessHours),
+		"keepFailedHours":  float64(*keepFailedHours),
+		"keepPendingHours": float64(*keepPendingHours),
 	}
 	if *dryRun {
 		log.Println("Performing dry run...")
 	}
-	log.Printf("Configured namespace: '%s', keepSuccessHours: %d, keepFailedHours: %d", options["namespace"], *keepSuccessHours, *keepFailedHours)
-	log.Printf("Starting controller...")
+	log.Printf(
+		"Provided settings: namespace=%s, dryRun=%t, keepSuccessHours: %d, keepFailedHours: %d, keepPendingHours: %d",
+		*namespace, *dryRun, *keepSuccessHours, *keepFailedHours, *keepPendingHours,
+	)
 
-	go controller.NewPodController(clientset, options).Run(stop, wg)
+	go func() {
+		wg.Add(1)
+		defer wg.Done()
+		controller.NewPodController(clientset, *namespace, *dryRun, options).Run(stop)
+	}()
+	log.Printf("Controller started...")
 
 	<-sigs // Wait for signals (this hangs until a signal arrives)
 	log.Printf("Shutting down...")
