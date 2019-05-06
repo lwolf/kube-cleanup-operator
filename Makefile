@@ -3,8 +3,8 @@ AUTHOR=lwolf
 VERSION ?= 0.4.1
 REGISTRY ?= quay.io
 GIT_SHA=$(shell git --no-pager describe --always --dirty)
-BUILD_TIME=$(shell date '+%s')
-LFLAGS ?= -X main.gitsha=${GIT_SHA} -X main.compiled=${BUILD_TIME}
+COMMIT_TIME=$(shell git show --format=%ct --no-patch)
+LFLAGS ?= -X main.gitsha=${GIT_SHA} -X main.committed=${COMMIT_TIME}
 ROOT_DIR=${PWD}
 GOVERSION ?= 1.10.3
 HARDWARE=$(shell uname -m)
