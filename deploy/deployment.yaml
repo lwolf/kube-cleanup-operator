@@ -27,6 +27,13 @@ spec:
         image: quay.io/lwolf/kube-cleanup-operator
         imagePullPolicy: Always
         name: cleanup-operator
+        resources:
+          requests:
+            cpu: 50m
+            memory: 50Mi
+          limits:
+            cpu: 50m
+            memory: 50Mi
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       terminationGracePeriodSeconds: 30
