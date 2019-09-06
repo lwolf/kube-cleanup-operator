@@ -55,10 +55,10 @@ func main() {
 		*namespace, *dryRun, *keepSuccessHours, *keepFailedHours, *keepPendingHours,
 	)
 
+	wg.Add(1)
 	go func() {
-		wg.Add(1)
-		defer wg.Done()
 		controller.NewPodController(clientset, *namespace, *dryRun, options).Run(stop)
+		wg.Done()
 	}()
 	log.Printf("Controller started...")
 

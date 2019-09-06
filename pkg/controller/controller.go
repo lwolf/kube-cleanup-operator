@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/version"
@@ -16,6 +17,13 @@ import (
 	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/tools/cache"
 )
+
+func ignoreNotFound(err error) error {
+	if apierrs.IsNotFound(err) {
+		return nil
+	}
+	return err
+}
 
 const resyncPeriod = time.Second * 30
 
@@ -177,8 +185,7 @@ func (c *PodController) deleteObjects(podObj *v1.Pod, parentJobName string) {
 	if !c.dryRun {
 		log.Printf("Deleting pod '%s'", podObj.Name)
 		var po metav1.DeleteOptions
-		err := c.kclient.CoreV1().Pods(podObj.Namespace).Delete(podObj.Name, &po)
-		if err != nil {
+		if err := c.kclient.CoreV1().Pods(podObj.Namespace).Delete(podObj.Name, &po); err != nil {
 			log.Printf("failed to delete job %s: %v", parentJobName, err)
 		}
 	} else {
@@ -188,8 +195,7 @@ func (c *PodController) deleteObjects(podObj *v1.Pod, parentJobName string) {
 	if !c.dryRun {
 		log.Printf("Deleting job '%s'", parentJobName)
 		var jo metav1.DeleteOptions
-		err := c.kclient.BatchV1Client.Jobs(podObj.Namespace).Delete(parentJobName, &jo)
-		if err != nil {
+		if err := c.kclient.BatchV1Client.Jobs(podObj.Namespace).Delete(parentJobName, &jo); ignoreNotFound(err) != nil {
 			log.Printf("failed to delete job %s: %v", parentJobName, err)
 		}
 	} else {

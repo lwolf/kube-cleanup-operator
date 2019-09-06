@@ -9,7 +9,7 @@ ROOT_DIR=${PWD}
 GOVERSION ?= 1.10.3
 HARDWARE=$(shell uname -m)
 
-.PHONY: authors changelog build docker static release install_deps
+.PHONY: build docker static release install_deps
 
 default: build
 
@@ -18,7 +18,8 @@ golang:
 	@go version
 
 install_deps:
-	dep ensure
+	go mod tidy
+	go mod vendor
 
 build: golang
 	@echo "--> Compiling the project"
@@ -56,10 +57,6 @@ release: static
 clean:
 	rm -rf ./bin 2>/dev/null
 	rm -rf ./release 2>/dev/null
-
-authors:
-	@echo "--> Updating the AUTHORS"
-	git log --format='%aN <%aE>' | sort -u > AUTHORS
 
 format:
 	@echo "--> Running go fmt"
