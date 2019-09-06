@@ -1,12 +1,12 @@
 NAME := kube-cleanup-operator
 AUTHOR=lwolf
-VERSION ?= 0.4.1
+VERSION ?= 0.5.0
 REGISTRY ?= quay.io
 GIT_SHA=$(shell git --no-pager describe --always --dirty)
 COMMIT_TIME=$(shell git show --format=%ct --no-patch)
 LFLAGS ?= -X main.gitsha=${GIT_SHA} -X main.committed=${COMMIT_TIME}
 ROOT_DIR=${PWD}
-GOVERSION ?= 1.10.3
+GOVERSION ?= 1.13.0
 HARDWARE=$(shell uname -m)
 
 .PHONY: build docker static release install_deps
