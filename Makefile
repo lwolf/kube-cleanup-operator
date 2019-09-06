@@ -24,12 +24,12 @@ install_deps:
 build: golang
 	@echo "--> Compiling the project"
 	@mkdir -p bin
-	go build -ldflags "${LFLAGS}" -o bin/$(NAME) ./cmd
+	go build -mod=vendor -ldflags "${LFLAGS}" -o bin/$(NAME) ./cmd
 
 static: golang 
 	@echo "--> Compiling the static binary"
 	@mkdir -p bin
-	CGO_ENABLED=0 GOARCH=amd64 GOOS=linux go build -a -tags netgo -ldflags "-w ${LFLAGS}" -o bin/${NAME} ./cmd
+	CGO_ENABLED=0 GOARCH=amd64 GOOS=linux go build -mod=vendor -a -tags netgo -ldflags "-w ${LFLAGS}" -o bin/${NAME} ./cmd
 
 docker-build:
 	@echo "--> Compiling the project"

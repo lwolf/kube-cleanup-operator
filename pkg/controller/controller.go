@@ -8,13 +8,13 @@ import (
 	"strconv"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -100,7 +100,7 @@ func NewPodController(kclient *kubernetes.Clientset, namespace string, dryRun bo
 				return kclient.CoreV1().Pods(namespace).Watch(options)
 			},
 		},
-		&v1.Pod{},
+		&corev1.Pod{},
 		resyncPeriod,
 		cache.Indexers{},
 	)
@@ -141,7 +141,7 @@ func (c *PodController) Run(stopCh <-chan struct{}) {
 }
 
 func (c *PodController) Process(obj interface{}) {
-	podObj := obj.(*v1.Pod)
+	podObj := obj.(*corev1.Pod)
 	parentJobName := c.getParentJobName(podObj)
 	// if we couldn't find a prent job name, ignore this pod
 	if parentJobName == "" {
@@ -150,15 +150,15 @@ func (c *PodController) Process(obj interface{}) {
 
 	executionTimeHours := c.getExecutionTimeHours(podObj)
 	switch podObj.Status.Phase {
-	case v1.PodSucceeded:
+	case corev1.PodSucceeded:
 		if c.keepSuccessHours == 0 || (c.keepSuccessHours > 0 && executionTimeHours > c.keepSuccessHours) {
 			c.deleteObjects(podObj, parentJobName)
 		}
-	case v1.PodFailed:
+	case corev1.PodFailed:
 		if c.keepFailedHours == 0 || (c.keepFailedHours > 0 && executionTimeHours > c.keepFailedHours) {
 			c.deleteObjects(podObj, parentJobName)
 		}
-	case v1.PodPending:
+	case corev1.PodPending:
 		if c.keepPendingHours > 0 && executionTimeHours > c.keepPendingHours {
 			c.deleteObjects(podObj, parentJobName)
 		}
@@ -168,11 +168,11 @@ func (c *PodController) Process(obj interface{}) {
 }
 
 // method to calculate the hours that passed since the pod's execution end time
-func (c *PodController) getExecutionTimeHours(podObj *v1.Pod) float64 {
+func (c *PodController) getExecutionTimeHours(podObj *corev1.Pod) float64 {
 	currentUnixTime := time.Now()
 	for _, pc := range podObj.Status.Conditions {
 		// Looking for the time when pod's condition "Ready" became "false" (equals end of execution)
-		if pc.Type == v1.PodReady && pc.Status == v1.ConditionFalse {
+		if pc.Type == corev1.PodReady && pc.Status == corev1.ConditionFalse {
 			return currentUnixTime.Sub(pc.LastTransitionTime.Time).Hours()
 		}
 	}
@@ -180,31 +180,31 @@ func (c *PodController) getExecutionTimeHours(podObj *v1.Pod) float64 {
 	return 0.0
 }
 
-func (c *PodController) deleteObjects(podObj *v1.Pod, parentJobName string) {
-	// Delete Pod
-	if !c.dryRun {
-		log.Printf("Deleting pod '%s'", podObj.Name)
-		var po metav1.DeleteOptions
-		if err := c.kclient.CoreV1().Pods(podObj.Namespace).Delete(podObj.Name, &po); err != nil {
-			log.Printf("failed to delete job %s: %v", parentJobName, err)
-		}
-	} else {
-		log.Printf("dry-run: Pod '%s' would have been deleted", podObj.Name)
-	}
+func (c *PodController) deleteObjects(podObj *corev1.Pod, parentJobName string) {
 	// Delete Job itself
 	if !c.dryRun {
 		log.Printf("Deleting job '%s'", parentJobName)
 		var jo metav1.DeleteOptions
-		if err := c.kclient.BatchV1Client.Jobs(podObj.Namespace).Delete(parentJobName, &jo); ignoreNotFound(err) != nil {
+		if err := c.kclient.BatchV1().Jobs(podObj.Namespace).Delete(parentJobName, &jo); ignoreNotFound(err) != nil {
 			log.Printf("failed to delete job %s: %v", parentJobName, err)
 		}
 	} else {
 		log.Printf("dry-run: Job '%s' would have been deleted", parentJobName)
 	}
+	// Delete Pod
+	if !c.dryRun {
+		log.Printf("Deleting pod '%s'", podObj.Name)
+		var po metav1.DeleteOptions
+		if err := c.kclient.CoreV1().Pods(podObj.Namespace).Delete(podObj.Name, &po); ignoreNotFound(err) != nil {
+			log.Printf("failed to delete job's pod %s: %v", parentJobName, err)
+		}
+	} else {
+		log.Printf("dry-run: Pod '%s' would have been deleted", podObj.Name)
+	}
 	return
 }
 
-func (c *PodController) getParentJobName(podObj *v1.Pod) (parentJobName string) {
+func (c *PodController) getParentJobName(podObj *corev1.Pod) (parentJobName string) {
 
 	if c.isLegacySystem {
 		var createdMeta CreatedByAnnotation
