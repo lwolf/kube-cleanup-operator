@@ -62,12 +62,29 @@ func isLegacySystem(v version.Info) bool {
 	var minor int
 	re := regexp.MustCompile("[0-9]+")
 	m := re.FindAllString(v.Minor, 1)
+
+	if major == 0 || len(m) == 0 {
+		log.Printf("Fallback to Server GitVersion: %v", v.GitVersion)
+		re = regexp.MustCompile("^v([0-9]+)\\.([0-9]+)")
+		var gv = re.FindAllStringSubmatch(v.GitVersion, 1)
+		if len(gv) > 0 {
+			m = gv[0][1:3]
+		}
+	}
+
 	if len(m) != 0 {
-		minor, _ = strconv.Atoi(m[0])
+		if len(m) == 1 {
+			minor, _ = strconv.Atoi(m[0])
+		} else {
+			major, _ = strconv.Atoi(m[0])
+			minor, _ = strconv.Atoi(m[1])
+		}
 	} else {
 		log.Printf("failed to parse minor version %s", v.Minor)
 		minor = 0
 	}
+
+	log.Printf("Found Server Version: %v.%v", major, minor)
 
 	if major < 2 && minor < 8 {
 		oldVersion = true
