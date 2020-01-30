@@ -146,12 +146,11 @@ func (c *PodController) Run(stopCh <-chan struct{}) {
 func (c *PodController) Process(obj interface{}) {
 	podObj := obj.(*corev1.Pod)
 	parentJobName, isUncontrolledPod := c.getParentJobName(podObj)
-	// if we couldn't find a prent job name, ignore this pod
+	// if we couldn't find a prent job name, and it is owned from some orher kind or
+	// it is unowned and we are not allowed to delete unowned pods ignore this pod
 	if parentJobName == "" && !c.deleteUncontrolledPods && !isUncontrolledPod {
-		// check if pod has not labels like: jcx.component=task
 		return
 	}
-	// here in case the pod is owned by a Job or alternativelt it hase labels like: jcx.component=task
 	executionTimeHours := c.getExecutionTimeHours(podObj)
 	switch podObj.Status.Phase {
 	case corev1.PodSucceeded:
