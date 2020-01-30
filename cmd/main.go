@@ -29,6 +29,7 @@ func main() {
 
 	runOutsideCluster := flag.Bool("run-outside-cluster", false, "Set this flag when running outside of the cluster.")
 	namespace := flag.String("namespace", "", "Watch only this namespaces")
+	deleteUncontrolledPods := flag.Bool("delete-uncontrolled-pods", false, "Set this to delete pods that are not owned by a Job.")
 	keepSuccessHours := flag.Int("keep-successful", 0, "Number of hours to keep successful jobs, -1 - forever, 0 - never (default), >0 number of hours")
 	keepFailedHours := flag.Int("keep-failures", -1, "Number of hours to keep faild jobs, -1 - forever (default) 0 - never, >0 number of hours")
 	keepPendingHours := flag.Int("keep-pending", -1, "Number of hours to keep pending jobs, -1 - forever (default) >0 number of hours")
@@ -57,7 +58,7 @@ func main() {
 
 	wg.Add(1)
 	go func() {
-		controller.NewPodController(clientset, *namespace, *dryRun, options).Run(stop)
+		controller.NewPodController(clientset, *namespace, *dryRun, options, *deleteUncontrolledPods).Run(stop)
 		wg.Done()
 	}()
 	log.Printf("Controller started...")

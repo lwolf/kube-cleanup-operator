@@ -33,11 +33,12 @@ type PodController struct {
 	podInformer cache.SharedIndexInformer
 	kclient     *kubernetes.Clientset
 
-	keepSuccessHours float64
-	keepFailedHours  float64
-	keepPendingHours float64
-	dryRun           bool
-	isLegacySystem   bool
+	keepSuccessHours       float64
+	keepFailedHours        float64
+	keepPendingHours       float64
+	deleteUncontrolledPods bool
+	dryRun                 bool
+	isLegacySystem         bool
 }
 
 // CreatedByAnnotation type used to match pods created by job
@@ -77,18 +78,19 @@ func isLegacySystem(v version.Info) bool {
 }
 
 // NewPodController creates a new NewPodController
-func NewPodController(kclient *kubernetes.Clientset, namespace string, dryRun bool, opts map[string]float64) *PodController {
+func NewPodController(kclient *kubernetes.Clientset, namespace string, dryRun bool, opts map[string]float64, deleteUncontrolledPods bool) *PodController {
 	serverVersion, err := kclient.ServerVersion()
 	if err != nil {
 		log.Fatalf("Failed to retrieve server serverVersion %v", err)
 	}
 
 	podWatcher := &PodController{
-		keepSuccessHours: opts["keepSuccessHours"],
-		keepFailedHours:  opts["keepFailedHours"],
-		keepPendingHours: opts["keepPendingHours"],
-		dryRun:           dryRun,
-		isLegacySystem:   isLegacySystem(*serverVersion),
+		keepSuccessHours:       opts["keepSuccessHours"],
+		keepFailedHours:        opts["keepFailedHours"],
+		keepPendingHours:       opts["keepPendingHours"],
+		deleteUncontrolledPods: deleteUncontrolledPods,
+		dryRun:                 dryRun,
+		isLegacySystem:         isLegacySystem(*serverVersion),
 	}
 	// Create informer for watching Namespaces
 	podInformer := cache.NewSharedIndexInformer(
@@ -123,7 +125,8 @@ func NewPodController(kclient *kubernetes.Clientset, namespace string, dryRun bo
 
 func (c *PodController) periodicCacheCheck() {
 	for {
-		for _, obj := range c.podInformer.GetStore().List() {
+		podList := c.podInformer.GetStore().List()
+		for _, obj := range podList {
 			c.Process(obj)
 		}
 		time.Sleep(2 * resyncPeriod)
@@ -142,12 +145,13 @@ func (c *PodController) Run(stopCh <-chan struct{}) {
 
 func (c *PodController) Process(obj interface{}) {
 	podObj := obj.(*corev1.Pod)
-	parentJobName := c.getParentJobName(podObj)
+	parentJobName, isUncontrolledPod := c.getParentJobName(podObj)
 	// if we couldn't find a prent job name, ignore this pod
-	if parentJobName == "" {
+	if parentJobName == "" && !c.deleteUncontrolledPods && !isUncontrolledPod {
+		// check if pod has not labels like: jcx.component=task
 		return
 	}
-
+	// here in case the pod is owned by a Job or alternativelt it hase labels like: jcx.component=task
 	executionTimeHours := c.getExecutionTimeHours(podObj)
 	switch podObj.Status.Phase {
 	case corev1.PodSucceeded:
@@ -182,14 +186,16 @@ func (c *PodController) getExecutionTimeHours(podObj *corev1.Pod) float64 {
 
 func (c *PodController) deleteObjects(podObj *corev1.Pod, parentJobName string) {
 	// Delete Job itself
-	if !c.dryRun {
-		log.Printf("Deleting job '%s'", parentJobName)
-		var jo metav1.DeleteOptions
-		if err := c.kclient.BatchV1().Jobs(podObj.Namespace).Delete(parentJobName, &jo); ignoreNotFound(err) != nil {
-			log.Printf("failed to delete job %s: %v", parentJobName, err)
+	if parentJobName != "" {
+		if !c.dryRun {
+			log.Printf("Deleting job '%s'", parentJobName)
+			var jo metav1.DeleteOptions
+			if err := c.kclient.BatchV1().Jobs(podObj.Namespace).Delete(parentJobName, &jo); ignoreNotFound(err) != nil {
+				log.Printf("failed to delete job %s: %v", parentJobName, err)
+			}
+		} else {
+			log.Printf("dry-run: Job '%s' would have been deleted", parentJobName)
 		}
-	} else {
-		log.Printf("dry-run: Job '%s' would have been deleted", parentJobName)
 	}
 	// Delete Pod
 	if !c.dryRun {
@@ -204,8 +210,8 @@ func (c *PodController) deleteObjects(podObj *corev1.Pod, parentJobName string) 
 	return
 }
 
-func (c *PodController) getParentJobName(podObj *corev1.Pod) (parentJobName string) {
-
+func (c *PodController) getParentJobName(podObj *corev1.Pod) (parentJobName string, isUncontrolledPod bool) {
+	isUncontrolledPod = true
 	if c.isLegacySystem {
 		var createdMeta CreatedByAnnotation
 		err := json.Unmarshal([]byte(podObj.ObjectMeta.Annotations["kubernetes.io/created-by"]), &createdMeta)
@@ -213,12 +219,14 @@ func (c *PodController) getParentJobName(podObj *corev1.Pod) (parentJobName stri
 			log.Printf("failed to unmarshal annotations for pod %s. %v", podObj.Name, err)
 			return
 		}
+		isUncontrolledPod = false
 		if createdMeta.Reference.Kind == "Job" {
 			parentJobName = createdMeta.Reference.Name
 		}
 	} else {
 		// Going all over the owners, looking for a job, usually there is only one owner
 		for _, ow := range podObj.OwnerReferences {
+			isUncontrolledPod = false
 			if ow.Kind == "Job" {
 				parentJobName = ow.Name
 			}
