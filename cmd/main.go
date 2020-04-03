@@ -33,6 +33,7 @@ func main() {
 	keepSuccessHours := flag.Int("keep-successful", 0, "Number of hours to keep successful jobs, -1 - forever, 0 - never (default), >0 number of hours")
 	keepFailedHours := flag.Int("keep-failures", -1, "Number of hours to keep faild jobs, -1 - forever (default) 0 - never, >0 number of hours")
 	keepPendingHours := flag.Int("keep-pending", -1, "Number of hours to keep pending jobs, -1 - forever (default) >0 number of hours")
+	keepEvictedHours := flag.Int("keep-evicted", -1, "Number of hours to keep evicted jobs, -1 - forever (default) >0 number of hours")
 	dryRun := flag.Bool("dry-run", false, "Print only, do not delete anything.")
 	flag.Parse()
 
@@ -47,13 +48,14 @@ func main() {
 		"keepSuccessHours": float64(*keepSuccessHours),
 		"keepFailedHours":  float64(*keepFailedHours),
 		"keepPendingHours": float64(*keepPendingHours),
+		"keepEvictedHours": float64(*keepEvictedHours),
 	}
 	if *dryRun {
 		log.Println("Performing dry run...")
 	}
 	log.Printf(
-		"Provided settings: namespace=%s, dryRun=%t, keepSuccessHours: %d, keepFailedHours: %d, keepPendingHours: %d",
-		*namespace, *dryRun, *keepSuccessHours, *keepFailedHours, *keepPendingHours,
+		"Provided settings: namespace=%s, dryRun=%t, keepSuccessHours: %d, keepFailedHours: %d, keepPendingHours: %d, keepEvictedHours: %d",
+		*namespace, *dryRun, *keepSuccessHours, *keepFailedHours, *keepPendingHours, *keepEvictedHours,
 	)
 
 	wg.Add(1)

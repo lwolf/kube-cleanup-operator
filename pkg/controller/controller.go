@@ -36,6 +36,7 @@ type PodController struct {
 	keepSuccessHours       float64
 	keepFailedHours        float64
 	keepPendingHours       float64
+	keepEvictedHours       float64
 	deleteUncontrolledPods bool
 	dryRun                 bool
 	isLegacySystem         bool
@@ -158,6 +159,12 @@ func (c *PodController) Process(obj interface{}) {
 			c.deleteObjects(podObj, parentJobName)
 		}
 	case corev1.PodFailed:
+		if podObj.Status.Reason == "Evicted" {
+			if c.keepEvictedHours == 0 || (c.keepEvictedHours > 0 && executionTimeHours > c.keepEvictedHours) {
+				c.deleteObjects(podObj, parentJobName)
+				return
+			}
+		}
 		if c.keepFailedHours == 0 || (c.keepFailedHours > 0 && executionTimeHours > c.keepFailedHours) {
 			c.deleteObjects(podObj, parentJobName)
 		}
