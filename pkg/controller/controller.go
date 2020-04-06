@@ -36,6 +36,7 @@ type PodController struct {
 	keepSuccessHours       float64
 	keepFailedHours        float64
 	keepPendingHours       float64
+	keepEvictedHours       float64
 	deleteUncontrolledPods bool
 	dryRun                 bool
 	isLegacySystem         bool
@@ -88,6 +89,7 @@ func NewPodController(kclient *kubernetes.Clientset, namespace string, dryRun bo
 		keepSuccessHours:       opts["keepSuccessHours"],
 		keepFailedHours:        opts["keepFailedHours"],
 		keepPendingHours:       opts["keepPendingHours"],
+		keepEvictedHours:       opts["keepEvictedHours"],
 		deleteUncontrolledPods: deleteUncontrolledPods,
 		dryRun:                 dryRun,
 		isLegacySystem:         isLegacySystem(*serverVersion),
@@ -158,6 +160,12 @@ func (c *PodController) Process(obj interface{}) {
 			c.deleteObjects(podObj, parentJobName)
 		}
 	case corev1.PodFailed:
+		if podObj.Status.Reason == "Evicted" {
+			if c.keepEvictedHours == 0 || (c.keepEvictedHours > 0 && executionTimeHours > c.keepEvictedHours) {
+				c.deleteObjects(podObj, parentJobName)
+				return
+			}
+		}
 		if c.keepFailedHours == 0 || (c.keepFailedHours > 0 && executionTimeHours > c.keepFailedHours) {
 			c.deleteObjects(podObj, parentJobName)
 		}
@@ -171,6 +179,8 @@ func (c *PodController) Process(obj interface{}) {
 }
 
 // method to calculate the hours that passed since the pod's execution end time
+// in case of evicted pods, they are Failed but the Status.Conditions are deleted,
+// for such cases we are considering the startTime of the pod that still preserved in status.
 func (c *PodController) getExecutionTimeHours(podObj *corev1.Pod) float64 {
 	currentUnixTime := time.Now()
 	for _, pc := range podObj.Status.Conditions {
@@ -178,6 +188,9 @@ func (c *PodController) getExecutionTimeHours(podObj *corev1.Pod) float64 {
 		if pc.Type == corev1.PodReady && pc.Status == corev1.ConditionFalse {
 			return currentUnixTime.Sub(pc.LastTransitionTime.Time).Hours()
 		}
+	}
+	if podObj.Status.Phase == corev1.PodFailed && podObj.Status.Reason == "Evicted" {
+		return currentUnixTime.Sub(podObj.Status.StartTime.Time).Hours()
 	}
 
 	return 0.0
