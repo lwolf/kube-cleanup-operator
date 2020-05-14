@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"k8s.io/klog"
 	"log"
 	"os"
 	"os/signal"
@@ -19,6 +20,12 @@ import (
 func main() {
 	// Set logging output to standard console out
 	log.SetOutput(os.Stdout)
+
+	// kubernetes client-go uses klog, which logs to file by default. Change defaults to log to stderr instead of file.
+	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
+	klog.InitFlags(klogFlags)
+	logtostderr := klogFlags.Lookup("logtostderr")
+	logtostderr.Value.Set("true")
 
 	sigs := make(chan os.Signal, 1) // Create channel to receive OS signals
 	stop := make(chan struct{})     // Create channel to receive stop signal
