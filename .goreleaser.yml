@@ -25,7 +25,6 @@ release:
     owner: lwolf
     name: kube-cleanup-operator
   prerelease: true
-  draft: true
 
 dockers:
   - dockerfile: Dockerfile
