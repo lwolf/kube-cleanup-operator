@@ -1,8 +1,8 @@
 package main
 
 import (
+	"context"
 	"flag"
-	"k8s.io/klog"
 	"log"
 	"os"
 	"os/signal"
@@ -10,11 +10,13 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/lwolf/kube-cleanup-operator/pkg/controller"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp" // TODO: Add all auth providers
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog"
+
+	"github.com/lwolf/kube-cleanup-operator/pkg/controller"
 )
 
 func main() {
@@ -44,6 +46,7 @@ func main() {
 
 	// Create clientset for interacting with the kubernetes cluster
 	clientset, err := newClientSet(*runOutsideCluster)
+	ctx := context.Background()
 
 	if err != nil {
 		log.Fatal(err.Error())
@@ -64,7 +67,7 @@ func main() {
 
 	wg.Add(1)
 	go func() {
-		controller.NewPodController(clientset, *namespace, *dryRun, options).Run(stop)
+		controller.NewPodController(ctx, clientset, *namespace, *dryRun, options).Run(stop)
 		wg.Done()
 	}()
 	log.Printf("Controller started...")

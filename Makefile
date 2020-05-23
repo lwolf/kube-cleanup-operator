@@ -6,7 +6,7 @@ GIT_SHA=$(shell git --no-pager describe --always --dirty)
 COMMIT_TIME=$(shell git show --format=%ct --no-patch)
 LFLAGS ?= -X main.gitsha=${GIT_SHA} -X main.committed=${COMMIT_TIME}
 ROOT_DIR=${PWD}
-GOVERSION ?= 1.13.0
+GOVERSION ?= 1.14.0
 HARDWARE=$(shell uname -m)
 
 .PHONY: build docker static release install_deps
