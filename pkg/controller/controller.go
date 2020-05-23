@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"reflect"
@@ -38,6 +39,7 @@ type PodController struct {
 	keepPendingHours float64
 	dryRun           bool
 	isLegacySystem   bool
+	ctx              context.Context
 }
 
 // CreatedByAnnotation type used to match pods created by job
@@ -77,27 +79,28 @@ func isLegacySystem(v version.Info) bool {
 }
 
 // NewPodController creates a new NewPodController
-func NewPodController(kclient *kubernetes.Clientset, namespace string, dryRun bool, opts map[string]float64) *PodController {
+func NewPodController(ctx context.Context, kclient *kubernetes.Clientset, namespace string, dryRun bool, opts map[string]float64) *PodController {
 	serverVersion, err := kclient.ServerVersion()
 	if err != nil {
 		log.Fatalf("Failed to retrieve server serverVersion %v", err)
 	}
 
-	podWatcher := &PodController{
+	podController := &PodController{
 		keepSuccessHours: opts["keepSuccessHours"],
 		keepFailedHours:  opts["keepFailedHours"],
 		keepPendingHours: opts["keepPendingHours"],
 		dryRun:           dryRun,
 		isLegacySystem:   isLegacySystem(*serverVersion),
+		ctx:              ctx,
 	}
 	// Create informer for watching Namespaces
 	podInformer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				return kclient.CoreV1().Pods(namespace).List(options)
+				return kclient.CoreV1().Pods(namespace).List(ctx, options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return kclient.CoreV1().Pods(namespace).Watch(options)
+				return kclient.CoreV1().Pods(namespace).Watch(ctx, options)
 			},
 		},
 		&corev1.Pod{},
@@ -106,19 +109,19 @@ func NewPodController(kclient *kubernetes.Clientset, namespace string, dryRun bo
 	)
 	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			podWatcher.Process(obj)
+			podController.Process(obj)
 		},
 		UpdateFunc: func(old, new interface{}) {
 			if !reflect.DeepEqual(old, new) {
-				podWatcher.Process(new)
+				podController.Process(new)
 			}
 		},
 	})
 
-	podWatcher.kclient = kclient
-	podWatcher.podInformer = podInformer
+	podController.kclient = kclient
+	podController.podInformer = podInformer
 
-	return podWatcher
+	return podController
 }
 
 func (c *PodController) periodicCacheCheck() {
@@ -185,7 +188,7 @@ func (c *PodController) deleteObjects(podObj *corev1.Pod, parentJobName string) 
 	if !c.dryRun {
 		log.Printf("Deleting job '%s'", parentJobName)
 		var jo metav1.DeleteOptions
-		if err := c.kclient.BatchV1().Jobs(podObj.Namespace).Delete(parentJobName, &jo); ignoreNotFound(err) != nil {
+		if err := c.kclient.BatchV1().Jobs(podObj.Namespace).Delete(c.ctx, parentJobName, jo); ignoreNotFound(err) != nil {
 			log.Printf("failed to delete job %s: %v", parentJobName, err)
 		}
 	} else {
@@ -195,7 +198,7 @@ func (c *PodController) deleteObjects(podObj *corev1.Pod, parentJobName string) 
 	if !c.dryRun {
 		log.Printf("Deleting pod '%s'", podObj.Name)
 		var po metav1.DeleteOptions
-		if err := c.kclient.CoreV1().Pods(podObj.Namespace).Delete(podObj.Name, &po); ignoreNotFound(err) != nil {
+		if err := c.kclient.CoreV1().Pods(podObj.Namespace).Delete(c.ctx, podObj.Name, po); ignoreNotFound(err) != nil {
 			log.Printf("failed to delete job's pod %s: %v", parentJobName, err)
 		}
 	} else {
