@@ -36,6 +36,7 @@ type Kleaner struct {
 	deleteFailedAfter     time.Duration
 	deletePendingAfter    time.Duration
 	deleteOrphanedAfter   time.Duration
+	deleteEvictedAfter    time.Duration
 
 	dryRun bool
 	ctx    context.Context
@@ -43,7 +44,7 @@ type Kleaner struct {
 
 // NewKleaner creates a new NewKleaner
 func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace string, dryRun bool, deleteSuccessfulAfter,
-	deleteFailedAfter, deletePendingAfter, deleteOrphanedAfter time.Duration) *Kleaner {
+	deleteFailedAfter, deletePendingAfter, deleteOrphanedAfter, deleteEvictedAfter time.Duration) *Kleaner {
 	jobInformer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
@@ -79,11 +80,9 @@ func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace st
 		deleteFailedAfter:     deleteFailedAfter,
 		deletePendingAfter:    deletePendingAfter,
 		deleteOrphanedAfter:   deleteOrphanedAfter,
+		deleteEvictedAfter:    deleteEvictedAfter,
 	}
 	jobInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			kleaner.Process(obj)
-		},
 		UpdateFunc: func(old, new interface{}) {
 			if !reflect.DeepEqual(old, new) {
 				kleaner.Process(new)
@@ -91,9 +90,6 @@ func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace st
 		},
 	})
 	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			kleaner.Process(obj)
-		},
 		UpdateFunc: func(old, new interface{}) {
 			if !reflect.DeepEqual(old, new) {
 				kleaner.Process(new)
@@ -134,8 +130,11 @@ func (c *Kleaner) Run(stopCh <-chan struct{}) {
 func (c *Kleaner) Process(obj interface{}) {
 	switch t := obj.(type) {
 	case *batchv1.Job:
+		// skip jobs that are already in the deleting process
+		if !t.DeletionTimestamp.IsZero() {
+			return
+		}
 		job := t
-		log.Printf("Found a job: %s. completionTime: %v active: %v", job.Name, job.Status.CompletionTime, job.Status.Active)
 		// skip the job if it hasn't completed yet or has any active pods
 		if job.Status.CompletionTime.IsZero() || job.Status.Active > 0 {
 			return
@@ -153,33 +152,38 @@ func (c *Kleaner) Process(obj interface{}) {
 		}
 
 	case *corev1.Pod:
-		pod := t
-		ownedByJob := podOwnedByJob(pod)
-		log.Printf("Found a pod: %s. owned by job %v", pod.Name, ownedByJob)
-		if !ownedByJob && c.deleteOrphanedAfter == 0 {
+		// skip pods that are already in the deleting process
+		if !t.DeletionTimestamp.IsZero() {
 			return
 		}
+		pod := t
+		owners := getPodOwnerKinds(pod)
 		podFinishTime := extractPodFinishTime(pod)
 		if podFinishTime.IsZero() {
 			return
 		}
 		age := time.Now().Sub(podFinishTime)
-		log.Printf("Found a pod: %s. completionTime: %v age: %v", pod.Name, podFinishTime, age)
-		switch pod.Status.Phase {
-		case corev1.PodSucceeded:
-			if c.deleteSuccessfulAfter > 0 && age >= c.deleteSuccessfulAfter {
+		// orphaned pod: those that do not have any owner references
+		// - uses c.deleteOrphanedAfter
+		if len(owners) == 0 {
+			if c.deleteOrphanedAfter > 0 && age >= c.deleteOrphanedAfter {
 				c.deletePods(pod)
 			}
-		case corev1.PodFailed:
-			if c.deleteFailedAfter > 0 && age >= c.deleteFailedAfter {
-				c.deletePods(pod)
-			}
-		case corev1.PodPending:
-			if c.deletePendingAfter > 0 && age >= c.deletePendingAfter {
-				c.deletePods(pod)
-			}
-		default:
 			return
+		}
+		// owned by job, have exactly one ownerReference present and its kind is Job
+		//  - uses the c.deleteSuccessfulAfter, c.deleteFailedAfter, c.deletePendingAfter
+		if isOwnedByJob(owners) {
+			toDelete := c.maybeDeletePod(pod.Status.Phase, age)
+			if toDelete {
+				c.deletePods(pod)
+			}
+			return
+		}
+		// evicted pods, those with or without owner references, but in Evicted state
+		//  - uses c.deleteEvictedAfter
+		if pod.Status.Phase == corev1.PodFailed && pod.Status.Reason == "Evicted" && c.deleteEvictedAfter > 0 && age >= c.deleteEvictedAfter {
+			c.deletePods(pod)
 		}
 	}
 }
@@ -208,12 +212,39 @@ func (c *Kleaner) deletePods(pod *corev1.Pod) {
 	}
 }
 
-func podOwnedByJob(pod *corev1.Pod) bool {
-	// Going all over the owners, looking for a job, usually there is only one owner
-	for _, ow := range pod.OwnerReferences {
-		if ow.Kind == "Job" {
+func (c *Kleaner) maybeDeletePod(podPhase corev1.PodPhase, timeSinceFinish time.Duration) bool {
+	switch podPhase {
+	case corev1.PodSucceeded:
+		if c.deleteSuccessfulAfter > 0 && timeSinceFinish >= c.deleteSuccessfulAfter {
 			return true
 		}
+	case corev1.PodFailed:
+		if c.deleteFailedAfter > 0 && timeSinceFinish >= c.deleteFailedAfter {
+			return true
+		}
+	case corev1.PodPending:
+		if c.deletePendingAfter > 0 && timeSinceFinish >= c.deletePendingAfter {
+			return true
+		}
+	default:
+		return false
+	}
+	return false
+}
+
+func getPodOwnerKinds(pod *corev1.Pod) []string {
+	var kinds []string
+	for _, ow := range pod.OwnerReferences {
+		kinds = append(kinds, ow.Kind)
+	}
+	return kinds
+}
+
+// isOwnedByJob returns true if and only if pod has a single owner
+// and this owners kind is Job
+func isOwnedByJob(ownerKinds []string) bool {
+	if len(ownerKinds) == 1 && ownerKinds[0] == "Job" {
+		return true
 	}
 	return false
 }
