@@ -4,12 +4,14 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/lwolf/kube-cleanup-operator)](https://goreportcard.com/report/github.com/lwolf/kube-cleanup-operator)
 [![Docker Repository on Quay](https://quay.io/repository/lwolf/kube-cleanup-operator/status "Docker Repository on Quay")](https://quay.io/repository/lwolf/kube-cleanup-operator)
 
-Experimental Kubernetes Operator to automatically delete completed Jobs and their Pods.
-Controller listens for changes in Pods created by Jobs and deletes it on Completion.
+Kubernetes Controller to automatically delete completed Jobs and Pods.
+Controller listens for changes in Pods and Jobs and acts accordingly with config arguments.
 
-Some defaults:
-* All Namespaces are monitored by default
-* Only Pods created by Jobs are monitored
+Some common use-case scenarios:
+* Delete Jobs and their pods after their completion
+* Delete Pods stuck in a Pending state
+* Delete Pods in Evicted state
+* Delete orphaned Pods (Pods without an owner in non-running state)
 
 ## Usage
 
@@ -48,33 +50,70 @@ $ docker build .
 ```
 $ make install_deps
 $ make build
-$ ./bin/kube-cleanup-operator --help
-Usage of ./bin/kube-cleanup-operator:
-  -namespace string
-    	Watch only this namespaces (omit to operate clusterwide)
-  -run-outside-cluster
-    	Set this flag when running outside of the cluster.
-  -keep-successful
-        the number of hours to keep a succesfull job
-        -1 - forever 
-        0  - never (default)
-        >0 - number of hours
-  -keep-failures
-        the number of hours to keep a failed job
-        -1 - forever (default)
-        0  - never
-        >0 - number of hours
-  -keep-pending
-        the number of hours to keep a pending job
-        -1 - forever (default)
-        0  - forever
-        >0 - number of hours
-  -dry-run
-        Perform dry run, print only
-        
-$ ./bin/kube-cleanup-operator --run-outside-cluster --namespace=default --keep-successful=0 --keep-failures=-1 --keep-pending=-1
+$ ./bin/kube-cleanup-operator -run-outside-cluster -dry-run=true
 ```
 
+## Usage
+
+Pre v0.7.0
+
+```
+    $ ./bin/kube-cleanup-operator --help
+    Usage of ./bin/kube-cleanup-operator:
+      -namespace string
+            Watch only this namespaces (omit to operate clusterwide)
+      -run-outside-cluster
+            Set this flag when running outside of the cluster.
+      -keep-successful
+            the number of hours to keep a succesfull job
+            -1 - forever 
+            0  - never (default)
+            >0 - number of hours
+      -keep-failures
+            the number of hours to keep a failed job
+            -1 - forever (default)
+            0  - never
+            >0 - number of hours
+      -keep-pending
+            the number of hours to keep a pending job
+            -1 - forever (default)
+            0  - forever
+            >0 - number of hours
+      -dry-run
+            Perform dry run, print only
+``` 
+
+After v0.7.0
+
+```
+Usage of ./bin/kube-cleanup-operator:
+  -delete-evicted-pods-after duration
+        Delete pods in evicted state (golang duration format, e.g 5m), 0 - never delete (default 15m0s)
+  -delete-failed-after duration
+        Delete jobs and pods in failed state after X duration (golang duration format, e.g 5m), 0 - never delete
+  -delete-orphaned-pods-after duration
+        Delete orphaned pods. Pods without an owner in non-running state (golang duration format, e.g 5m), 0 - never delete (default 1h0m0s)
+  -delete-pending-pods-after duration
+        Delete pods in pending state after X duration (golang duration format, e.g 5m), 0 - never delete
+  -delete-successful-after duration
+        Delete jobs and pods in successful state after X duration (golang duration format, e.g 5m), 0 - never delete (default 15m0s)
+  -dry-run
+        Print only, do not delete anything.
+  -keep-failures int
+        Number of hours to keep faild jobs, -1 - forever (default) 0 - never, >0 number of hours (default -1)
+  -keep-pending int
+        Number of hours to keep pending jobs, -1 - forever (default) >0 number of hours (default -1)
+  -keep-successful int
+        Number of hours to keep successful jobs, -1 - forever, 0 - never (default), >0 number of hours
+  -legacy-mode true
+        Legacy mode: true - use old `keep-*` flags, `false` - enable new `delete-*-after` flags (default true)
+  -listen-addr string
+        Address to expose metrics. (default "0.0.0.0:7000")
+  -namespace string
+        Limit scope to a single namespaces
+  -run-outside-cluster
+        Set this flag when running outside of the cluster.
+```
 
 ### Optional parameters 
 
