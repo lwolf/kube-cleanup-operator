@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/VictoriaMetrics/metrics"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp" // TODO: Add all auth providers
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
@@ -36,6 +38,7 @@ func setupLogging() {
 func main() {
 	runOutsideCluster := flag.Bool("run-outside-cluster", false, "Set this flag when running outside of the cluster.")
 	namespace := flag.String("namespace", "", "Limit scope to a single namespaces")
+	listenAddr := flag.String("listen-addr", "0.0.0.0:7000", "Address to expose metrics.")
 
 	deleteSuccessAfter := flag.Duration("delete-successful-after", 15*time.Minute, "Delete jobs and pods in successful state after X duration (golang duration format, e.g 5m), 0 - never delete")
 	deleteFailedAfter := flag.Duration("delete-failed-after", 0, "Delete jobs and pods in failed state after X duration (golang duration format, e.g 5m), 0 - never delete")
@@ -92,7 +95,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
 
 	wg.Add(1)
 	go func() {
@@ -105,7 +108,8 @@ func main() {
 				*legacyKeepSuccessHours,
 				*legacyKeepFailedHours,
 				*legacyKeepPendingHours,
-			).Run(stopCh)
+				stopCh,
+			).Run()
 		} else {
 			controller.NewKleaner(
 				ctx,
@@ -117,15 +121,46 @@ func main() {
 				*deletePendingAfter,
 				*deleteOrphanedAfter,
 				*deleteEvictedAfter,
-			).Run(stopCh)
+				stopCh,
+			).Run()
 		}
 		wg.Done()
 	}()
 	log.Printf("Controller started...")
 
+	server := http.Server{Addr: *listenAddr}
+	wg.Add(1)
+	go func() {
+		// Expose the registered metrics at `/metrics` path.
+		http.HandleFunc("/metrics", func(w http.ResponseWriter, req *http.Request) {
+			metrics.WritePrometheus(w, true)
+		})
+		err := server.ListenAndServe()
+		if err != nil {
+			log.Fatalf("failed to ListenAndServe metrics server: %v\n", err)
+		}
+		wg.Done()
+	}()
+	log.Printf("Listening at %s", *listenAddr)
+
+	wg.Add(1)
+	go func() {
+		for {
+			select {
+			case <-stopCh:
+				log.Println("shutting http server down")
+				err := server.Shutdown(ctx)
+				if err != nil {
+					log.Printf("failed to shutdown metrics server: %v\n", err)
+				}
+				wg.Done()
+				return
+			}
+		}
+	}()
+
 	<-sigsCh // Wait for signals (this hangs until a signal arrives)
-	log.Printf("Shutting down...")
-	cancel()
+	log.Printf("got termination signal...")
 	close(stopCh) // Tell goroutines to stopCh themselves
 	wg.Wait()     // Wait for all to be stopped
 }

@@ -2,10 +2,12 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"reflect"
 	"time"
 
+	"github.com/VictoriaMetrics/metrics"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
@@ -23,10 +25,20 @@ func ignoreNotFound(err error) error {
 	return err
 }
 
-const resyncPeriod = time.Second * 30
+func metricName(name string, namespace string) string {
+	return fmt.Sprintf(`%s{namespace=%q}`, name, namespace)
+}
 
-// Kleaner watches the kubernetes api for changes to Pods and
-// delete completed Pods without specific annotation
+const (
+	resyncPeriod           = time.Second * 30
+	podDeletedMetric       = "pods_deleted_total"
+	podDeletedFailedMetric = "pods_deleted_failed_total"
+	jobDeletedFailedMetric = "jobs_deleted_failed_total"
+	jobDeletedMetric       = "jobs_deleted_total"
+)
+
+// Kleaner watches the kubernetes api for changes to Pods and Jobs and
+// delete those according to configured timeouts
 type Kleaner struct {
 	podInformer cache.SharedIndexInformer
 	jobInformer cache.SharedIndexInformer
@@ -40,11 +52,12 @@ type Kleaner struct {
 
 	dryRun bool
 	ctx    context.Context
+	stopCh <-chan struct{}
 }
 
 // NewKleaner creates a new NewKleaner
 func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace string, dryRun bool, deleteSuccessfulAfter,
-	deleteFailedAfter, deletePendingAfter, deleteOrphanedAfter, deleteEvictedAfter time.Duration) *Kleaner {
+	deleteFailedAfter, deletePendingAfter, deleteOrphanedAfter, deleteEvictedAfter time.Duration, stopCh <-chan struct{}) *Kleaner {
 	jobInformer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
@@ -76,6 +89,7 @@ func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace st
 		dryRun:                dryRun,
 		kclient:               kclient,
 		ctx:                   ctx,
+		stopCh:                stopCh,
 		deleteSuccessfulAfter: deleteSuccessfulAfter,
 		deleteFailedAfter:     deleteFailedAfter,
 		deletePendingAfter:    deletePendingAfter,
@@ -104,27 +118,33 @@ func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace st
 }
 
 func (c *Kleaner) periodicCacheCheck() {
+	ticker := time.NewTicker(2 * resyncPeriod)
 	for {
-		for _, job := range c.jobInformer.GetStore().List() {
-			c.Process(job)
+		select {
+		case <-c.stopCh:
+			ticker.Stop()
+			return
+		case <-ticker.C:
+			for _, job := range c.jobInformer.GetStore().List() {
+				c.Process(job)
+			}
+			for _, obj := range c.podInformer.GetStore().List() {
+				c.Process(obj)
+			}
 		}
-		for _, obj := range c.podInformer.GetStore().List() {
-			c.Process(obj)
-		}
-		time.Sleep(2 * resyncPeriod)
 	}
 }
 
 // Run starts the process for listening for pod changes and acting upon those changes.
-func (c *Kleaner) Run(stopCh <-chan struct{}) {
+func (c *Kleaner) Run() {
 	log.Printf("Listening for changes...")
 
-	go c.podInformer.Run(stopCh)
-	go c.jobInformer.Run(stopCh)
+	go c.podInformer.Run(c.stopCh)
+	go c.jobInformer.Run(c.stopCh)
 
 	go c.periodicCacheCheck()
 
-	<-stopCh
+	<-c.stopCh
 }
 
 func (c *Kleaner) Process(obj interface{}) {
@@ -198,7 +218,10 @@ func (c *Kleaner) deleteJobs(job *batchv1.Job) {
 	jo := metav1.DeleteOptions{PropagationPolicy: &propagation}
 	if err := c.kclient.BatchV1().Jobs(job.Namespace).Delete(c.ctx, job.Name, jo); ignoreNotFound(err) != nil {
 		log.Printf("failed to delete job '%s:%s': %v", job.Namespace, job.Name, err)
+		metrics.GetOrCreateCounter(metricName(jobDeletedFailedMetric, job.Namespace)).Inc()
+		return
 	}
+	metrics.GetOrCreateCounter(metricName(jobDeletedMetric, job.Namespace)).Inc()
 }
 
 func (c *Kleaner) deletePods(pod *corev1.Pod) {
@@ -209,7 +232,10 @@ func (c *Kleaner) deletePods(pod *corev1.Pod) {
 	var po metav1.DeleteOptions
 	if err := c.kclient.CoreV1().Pods(pod.Namespace).Delete(c.ctx, pod.Name, po); ignoreNotFound(err) != nil {
 		log.Printf("failed to delete pod '%s:%s': %v", pod.Namespace, pod.Name, err)
+		metrics.GetOrCreateCounter(metricName(podDeletedFailedMetric, pod.Namespace)).Inc()
+		return
 	}
+	metrics.GetOrCreateCounter(metricName(podDeletedMetric, pod.Namespace)).Inc()
 }
 
 func (c *Kleaner) maybeDeletePod(podPhase corev1.PodPhase, timeSinceFinish time.Duration) bool {
