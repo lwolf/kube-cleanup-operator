@@ -3,12 +3,15 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp" // TODO: Add all auth providers
@@ -19,7 +22,7 @@ import (
 	"github.com/lwolf/kube-cleanup-operator/pkg/controller"
 )
 
-func main() {
+func setupLogging() {
 	// Set logging output to standard console out
 	log.SetOutput(os.Stdout)
 
@@ -28,55 +31,87 @@ func main() {
 	klog.InitFlags(klogFlags)
 	logtostderr := klogFlags.Lookup("logtostderr")
 	logtostderr.Value.Set("true")
+}
 
-	sigs := make(chan os.Signal, 1) // Create channel to receive OS signals
-	stop := make(chan struct{})     // Create channel to receive stop signal
-
-	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM, syscall.SIGINT) // Register the sigs channel to receieve SIGTERM
-
-	wg := &sync.WaitGroup{} // Goroutines can add themselves to this to be waited on so that they finish
-
+func main() {
 	runOutsideCluster := flag.Bool("run-outside-cluster", false, "Set this flag when running outside of the cluster.")
-	namespace := flag.String("namespace", "", "Watch only this namespaces")
-	keepSuccessHours := flag.Int("keep-successful", 0, "Number of hours to keep successful jobs, -1 - forever, 0 - never (default), >0 number of hours")
-	keepFailedHours := flag.Int("keep-failures", -1, "Number of hours to keep faild jobs, -1 - forever (default) 0 - never, >0 number of hours")
-	keepPendingHours := flag.Int("keep-pending", -1, "Number of hours to keep pending jobs, -1 - forever (default) >0 number of hours")
+	namespace := flag.String("namespace", "", "Limit scope to a single namespaces")
+
+	deleteOrphanedAfter := flag.Duration("delete-orphaned-after", 1*time.Hour, "Delete orphaned pods. Pods without an owner in non-running state (golang duration format, e.g 5m), 0 - never delete")
+	deleteSuccessAfter := flag.Duration("delete-successful-after", 15*time.Minute, "Delete jobs in successful state after X duration (golang duration format, e.g 5m), 0 - never delete")
+	deleteFailedAfter := flag.Duration("delete-failed-after", 0, "Delete jobs in failed state after X duration (golang duration format, e.g 5m), 0 - never delete")
+	deletePendingAfter := flag.Duration("delete-pending-after", 0, "Delete jobs in pending state after X duration (golang duration format, e.g 5m), 0 - never delete")
+
+	legacyKeepSuccessHours := flag.Int64("keep-successful", 0, "Number of hours to keep successful jobs, -1 - forever, 0 - never (default), >0 number of hours")
+	legacyKeepFailedHours := flag.Int64("keep-failures", -1, "Number of hours to keep faild jobs, -1 - forever (default) 0 - never, >0 number of hours")
+	legacyKeepPendingHours := flag.Int64("keep-pending", -1, "Number of hours to keep pending jobs, -1 - forever (default) >0 number of hours")
+	legacyMode := flag.Bool("legacy-mode", true, "Legacy mode: `true` - use old `keep-*` flags, `false` - enable new `delete-*-after` flags")
+
 	dryRun := flag.Bool("dry-run", false, "Print only, do not delete anything.")
 	flag.Parse()
+	setupLogging()
+
+	log.Println("Starting the application.")
+	log.Printf(
+		"Provided options: \n\t namespace: %s\n\t dry-run: %t\n\t delete-successful-after: %v\n\t delete-failed-after: %v\n\t delete-pending-after: %v\n\t delete-orphaned-after: %v\n",
+		*namespace, *dryRun, *deleteSuccessAfter, *deleteFailedAfter, *deletePendingAfter, deleteOrphanedAfter,
+	)
+
+	var warning strings.Builder
+	warning.WriteString("\n!!! DEPRECATION WARNING !!!\n")
+	warning.WriteString("\t`keep-successful` is deprecated, use `delete-successful-after` instead\n")
+	warning.WriteString("\t`keep-failures` is deprecated, use `delete-failed-after` instead\n")
+	warning.WriteString("\t`keep-pending` is deprecated, use `delete-pending-after` instead\n")
+	warning.WriteString("\tThese fields are going to be removed in the next version\n")
+	fmt.Printf(warning.String())
+
+	sigsCh := make(chan os.Signal, 1) // Create channel to receive OS signals
+	stopCh := make(chan struct{})     // Create channel to receive stopCh signal
+
+	signal.Notify(sigsCh, os.Interrupt, syscall.SIGTERM, syscall.SIGINT) // Register the sigsCh channel to receieve SIGTERM
+
+	wg := &sync.WaitGroup{}
 
 	// Create clientset for interacting with the kubernetes cluster
 	clientset, err := newClientSet(*runOutsideCluster)
-	ctx := context.Background()
-
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-
-	options := map[string]float64{
-		"keepSuccessHours": float64(*keepSuccessHours),
-		"keepFailedHours":  float64(*keepFailedHours),
-		"keepPendingHours": float64(*keepPendingHours),
-	}
-	if *dryRun {
-		log.Println("Performing dry run...")
-	}
-	log.Printf(
-		"Provided settings: namespace=%s, dryRun=%t, keepSuccessHours: %d, keepFailedHours: %d, keepPendingHours: %d",
-		*namespace, *dryRun, *keepSuccessHours, *keepFailedHours, *keepPendingHours,
-	)
+	ctx, cancel := context.WithCancel(context.Background())
 
 	wg.Add(1)
 	go func() {
-		controller.NewPodController(ctx, clientset, *namespace, *dryRun, options).Run(stop)
+		if *legacyMode {
+			controller.NewPodController(
+				ctx,
+				clientset,
+				*namespace,
+				*dryRun,
+				*legacyKeepSuccessHours,
+				*legacyKeepFailedHours,
+				*legacyKeepPendingHours,
+			)
+		} else {
+			controller.NewKleaner(
+				ctx,
+				clientset,
+				*namespace,
+				*dryRun,
+				*deleteSuccessAfter,
+				*deleteFailedAfter,
+				*deletePendingAfter,
+				*deleteOrphanedAfter,
+			).Run(stopCh)
+		}
 		wg.Done()
 	}()
 	log.Printf("Controller started...")
 
-	<-sigs // Wait for signals (this hangs until a signal arrives)
+	<-sigsCh // Wait for signals (this hangs until a signal arrives)
 	log.Printf("Shutting down...")
-
-	close(stop) // Tell goroutines to stop themselves
-	wg.Wait()   // Wait for all to be stopped
+	cancel()
+	close(stopCh) // Tell goroutines to stopCh themselves
+	wg.Wait()     // Wait for all to be stopped
 }
 
 func newClientSet(runOutsideCluster bool) (*kubernetes.Clientset, error) {
