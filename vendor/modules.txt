@@ -1,5 +1,8 @@
 # cloud.google.com/go v0.38.0
 cloud.google.com/go/compute/metadata
+# github.com/VictoriaMetrics/metrics v1.11.3
+## explicit
+github.com/VictoriaMetrics/metrics
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
 # github.com/go-logr/logr v0.1.0
@@ -39,6 +42,10 @@ github.com/modern-go/concurrent
 github.com/modern-go/reflect2
 # github.com/spf13/pflag v1.0.5
 github.com/spf13/pflag
+# github.com/valyala/fastrand v1.0.0
+github.com/valyala/fastrand
+# github.com/valyala/histogram v1.0.1
+github.com/valyala/histogram
 # golang.org/x/crypto v0.0.0-20200220183623-bac4c82f6975
 golang.org/x/crypto/ssh/terminal
 # golang.org/x/net v0.0.0-20191004110552-13f9640d40b9

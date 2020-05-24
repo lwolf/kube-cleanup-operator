@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/VictoriaMetrics/metrics"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -30,6 +31,7 @@ type PodController struct {
 	dryRun           bool
 	isLegacySystem   bool
 	ctx              context.Context
+	stopCh           <-chan struct{}
 }
 
 // CreatedByAnnotation type used to match pods created by job
@@ -70,7 +72,7 @@ func isLegacySystem(v version.Info) bool {
 
 // NewPodController creates a new NewPodController
 func NewPodController(ctx context.Context, kclient *kubernetes.Clientset, namespace string, dryRun bool, keepSuccessHours,
-	keepFailedHours, keepPendingHours int64) *PodController {
+	keepFailedHours, keepPendingHours int64, stopCh <-chan struct{}) *PodController {
 
 	serverVersion, err := kclient.ServerVersion()
 	if err != nil {
@@ -84,6 +86,7 @@ func NewPodController(ctx context.Context, kclient *kubernetes.Clientset, namesp
 		dryRun:           dryRun,
 		isLegacySystem:   isLegacySystem(*serverVersion),
 		ctx:              ctx,
+		stopCh:           stopCh,
 	}
 	// Create informer for watching Namespaces
 	podInformer := cache.NewSharedIndexInformer(
@@ -126,17 +129,22 @@ func (c *PodController) periodicCacheCheck() {
 }
 
 // Run starts the process for listening for pod changes and acting upon those changes.
-func (c *PodController) Run(stopCh <-chan struct{}) {
+func (c *PodController) Run() {
 	log.Printf("Listening for changes...")
 
-	go c.podInformer.Run(stopCh)
+	go c.podInformer.Run(c.stopCh)
 	go c.periodicCacheCheck()
 
-	<-stopCh
+	<-c.stopCh
 }
 
 func (c *PodController) Process(obj interface{}) {
 	podObj := obj.(*corev1.Pod)
+	// skip pods that are already in the deleting process
+	if !podObj.DeletionTimestamp.IsZero() {
+		return
+	}
+
 	parentJobName := c.getParentJobName(podObj)
 	// if we couldn't find a prent job name, ignore this pod
 	if parentJobName == "" {
@@ -182,6 +190,9 @@ func (c *PodController) deleteObjects(podObj *corev1.Pod, parentJobName string) 
 		var jo metav1.DeleteOptions
 		if err := c.kclient.BatchV1().Jobs(podObj.Namespace).Delete(c.ctx, parentJobName, jo); ignoreNotFound(err) != nil {
 			log.Printf("failed to delete job %s: %v", parentJobName, err)
+			metrics.GetOrCreateCounter(metricName(jobDeletedFailedMetric, podObj.Namespace)).Inc()
+		} else {
+			metrics.GetOrCreateCounter(metricName(jobDeletedMetric, podObj.Namespace)).Inc()
 		}
 	} else {
 		log.Printf("dry-run: Job '%s' would have been deleted", parentJobName)
@@ -192,6 +203,9 @@ func (c *PodController) deleteObjects(podObj *corev1.Pod, parentJobName string) 
 		var po metav1.DeleteOptions
 		if err := c.kclient.CoreV1().Pods(podObj.Namespace).Delete(c.ctx, podObj.Name, po); ignoreNotFound(err) != nil {
 			log.Printf("failed to delete job's pod %s: %v", parentJobName, err)
+			metrics.GetOrCreateCounter(metricName(podDeletedFailedMetric, podObj.Namespace)).Inc()
+		} else {
+			metrics.GetOrCreateCounter(metricName(podDeletedMetric, podObj.Namespace)).Inc()
 		}
 	} else {
 		log.Printf("dry-run: Pod '%s' would have been deleted", podObj.Name)
