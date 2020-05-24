@@ -19,14 +19,20 @@ spec:
     metadata:
       labels:
         run: cleanup-operator
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "7000"
     spec:
       serviceAccountName: cleanup-operator
       containers:
       - args:
         - --namespace=default
+        - --legacy-mode=false
         image: quay.io/lwolf/kube-cleanup-operator
         imagePullPolicy: Always
         name: cleanup-operator
+        ports:
+          - containerPort: 7000
         resources:
           requests:
             cpu: 50m
