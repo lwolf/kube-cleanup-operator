@@ -2,18 +2,15 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"reflect"
-	"regexp"
-	"strconv"
 	"time"
 
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -28,71 +25,38 @@ func ignoreNotFound(err error) error {
 
 const resyncPeriod = time.Second * 30
 
-// PodController watches the kubernetes api for changes to Pods and
+// Kleaner watches the kubernetes api for changes to Pods and
 // delete completed Pods without specific annotation
-type PodController struct {
+type Kleaner struct {
 	podInformer cache.SharedIndexInformer
+	jobInformer cache.SharedIndexInformer
 	kclient     *kubernetes.Clientset
 
-	keepSuccessHours float64
-	keepFailedHours  float64
-	keepPendingHours float64
-	dryRun           bool
-	isLegacySystem   bool
-	ctx              context.Context
+	deleteSuccessfulAfter time.Duration
+	deleteFailedAfter     time.Duration
+	deletePendingAfter    time.Duration
+	deleteOrphanedAfter   time.Duration
+
+	dryRun bool
+	ctx    context.Context
 }
 
-// CreatedByAnnotation type used to match pods created by job
-type CreatedByAnnotation struct {
-	Kind       string
-	ApiVersion string
-	Reference  struct {
-		Kind            string
-		Namespace       string
-		Name            string
-		Uid             string
-		ApiVersion      string
-		ResourceVersion string
-	}
-}
-
-func isLegacySystem(v version.Info) bool {
-	oldVersion := false
-
-	major, _ := strconv.Atoi(v.Major)
-
-	var minor int
-	re := regexp.MustCompile("[0-9]+")
-	m := re.FindAllString(v.Minor, 1)
-	if len(m) != 0 {
-		minor, _ = strconv.Atoi(m[0])
-	} else {
-		log.Printf("failed to parse minor version %s", v.Minor)
-		minor = 0
-	}
-
-	if major < 2 && minor < 8 {
-		oldVersion = true
-	}
-
-	return oldVersion
-}
-
-// NewPodController creates a new NewPodController
-func NewPodController(ctx context.Context, kclient *kubernetes.Clientset, namespace string, dryRun bool, opts map[string]float64) *PodController {
-	serverVersion, err := kclient.ServerVersion()
-	if err != nil {
-		log.Fatalf("Failed to retrieve server serverVersion %v", err)
-	}
-
-	podController := &PodController{
-		keepSuccessHours: opts["keepSuccessHours"],
-		keepFailedHours:  opts["keepFailedHours"],
-		keepPendingHours: opts["keepPendingHours"],
-		dryRun:           dryRun,
-		isLegacySystem:   isLegacySystem(*serverVersion),
-		ctx:              ctx,
-	}
+// NewKleaner creates a new NewKleaner
+func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace string, dryRun bool, deleteSuccessfulAfter,
+	deleteFailedAfter, deletePendingAfter, deleteOrphanedAfter time.Duration) *Kleaner {
+	jobInformer := cache.NewSharedIndexInformer(
+		&cache.ListWatch{
+			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+				return kclient.BatchV1().Jobs(namespace).List(ctx, options)
+			},
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+				return kclient.BatchV1().Jobs(namespace).Watch(ctx, options)
+			},
+		},
+		&batchv1.Job{},
+		resyncPeriod,
+		cache.Indexers{},
+	)
 	// Create informer for watching Namespaces
 	podInformer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
@@ -107,25 +71,47 @@ func NewPodController(ctx context.Context, kclient *kubernetes.Clientset, namesp
 		resyncPeriod,
 		cache.Indexers{},
 	)
-	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	kleaner := &Kleaner{
+		dryRun:                dryRun,
+		kclient:               kclient,
+		ctx:                   ctx,
+		deleteSuccessfulAfter: deleteSuccessfulAfter,
+		deleteFailedAfter:     deleteFailedAfter,
+		deletePendingAfter:    deletePendingAfter,
+		deleteOrphanedAfter:   deleteOrphanedAfter,
+	}
+	jobInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			podController.Process(obj)
+			kleaner.Process(obj)
 		},
 		UpdateFunc: func(old, new interface{}) {
 			if !reflect.DeepEqual(old, new) {
-				podController.Process(new)
+				kleaner.Process(new)
+			}
+		},
+	})
+	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			kleaner.Process(obj)
+		},
+		UpdateFunc: func(old, new interface{}) {
+			if !reflect.DeepEqual(old, new) {
+				kleaner.Process(new)
 			}
 		},
 	})
 
-	podController.kclient = kclient
-	podController.podInformer = podInformer
+	kleaner.podInformer = podInformer
+	kleaner.jobInformer = jobInformer
 
-	return podController
+	return kleaner
 }
 
-func (c *PodController) periodicCacheCheck() {
+func (c *Kleaner) periodicCacheCheck() {
 	for {
+		for _, job := range c.jobInformer.GetStore().List() {
+			c.Process(job)
+		}
 		for _, obj := range c.podInformer.GetStore().List() {
 			c.Process(obj)
 		}
@@ -134,98 +120,110 @@ func (c *PodController) periodicCacheCheck() {
 }
 
 // Run starts the process for listening for pod changes and acting upon those changes.
-func (c *PodController) Run(stopCh <-chan struct{}) {
+func (c *Kleaner) Run(stopCh <-chan struct{}) {
 	log.Printf("Listening for changes...")
 
 	go c.podInformer.Run(stopCh)
+	go c.jobInformer.Run(stopCh)
+
 	go c.periodicCacheCheck()
 
 	<-stopCh
 }
 
-func (c *PodController) Process(obj interface{}) {
-	podObj := obj.(*corev1.Pod)
-	parentJobName := c.getParentJobName(podObj)
-	// if we couldn't find a prent job name, ignore this pod
-	if parentJobName == "" {
-		return
-	}
+func (c *Kleaner) Process(obj interface{}) {
+	switch t := obj.(type) {
+	case *batchv1.Job:
+		job := t
+		log.Printf("Found a job: %s. completionTime: %v active: %v", job.Name, job.Status.CompletionTime, job.Status.Active)
+		// skip the job if it hasn't completed yet or has any active pods
+		if job.Status.CompletionTime.IsZero() || job.Status.Active > 0 {
+			return
+		}
+		timeSinceCompletion := time.Now().Sub(job.Status.CompletionTime.Time)
+		if job.Status.Succeeded > 0 {
+			if c.deleteSuccessfulAfter > 0 && timeSinceCompletion > c.deleteSuccessfulAfter {
+				c.deleteJobs(job)
+			}
+		}
+		if job.Status.Failed > 0 {
+			if c.deleteFailedAfter > 0 && timeSinceCompletion >= c.deleteFailedAfter {
+				c.deleteJobs(job)
+			}
+		}
 
-	executionTimeHours := c.getExecutionTimeHours(podObj)
-	switch podObj.Status.Phase {
-	case corev1.PodSucceeded:
-		if c.keepSuccessHours == 0 || (c.keepSuccessHours > 0 && executionTimeHours > c.keepSuccessHours) {
-			c.deleteObjects(podObj, parentJobName)
+	case *corev1.Pod:
+		pod := t
+		ownedByJob := podOwnedByJob(pod)
+		log.Printf("Found a pod: %s. owned by job %v", pod.Name, ownedByJob)
+		if !ownedByJob && c.deleteOrphanedAfter == 0 {
+			return
 		}
-	case corev1.PodFailed:
-		if c.keepFailedHours == 0 || (c.keepFailedHours > 0 && executionTimeHours > c.keepFailedHours) {
-			c.deleteObjects(podObj, parentJobName)
+		podFinishTime := extractPodFinishTime(pod)
+		if podFinishTime.IsZero() {
+			return
 		}
-	case corev1.PodPending:
-		if c.keepPendingHours > 0 && executionTimeHours > c.keepPendingHours {
-			c.deleteObjects(podObj, parentJobName)
+		age := time.Now().Sub(podFinishTime)
+		log.Printf("Found a pod: %s. completionTime: %v age: %v", pod.Name, podFinishTime, age)
+		switch pod.Status.Phase {
+		case corev1.PodSucceeded:
+			if c.deleteSuccessfulAfter > 0 && age >= c.deleteSuccessfulAfter {
+				c.deletePods(pod)
+			}
+		case corev1.PodFailed:
+			if c.deleteFailedAfter > 0 && age >= c.deleteFailedAfter {
+				c.deletePods(pod)
+			}
+		case corev1.PodPending:
+			if c.deletePendingAfter > 0 && age >= c.deletePendingAfter {
+				c.deletePods(pod)
+			}
+		default:
+			return
 		}
-	default:
-		return
 	}
 }
 
-// method to calculate the hours that passed since the pod's execution end time
-func (c *PodController) getExecutionTimeHours(podObj *corev1.Pod) float64 {
-	currentUnixTime := time.Now()
+func (c *Kleaner) deleteJobs(job *batchv1.Job) {
+	if c.dryRun {
+		log.Printf("dry-run: Job '%s:%s' would have been deleted", job.Namespace, job.Name)
+		return
+	}
+	log.Printf("Deleting job '%s:%s'", job.Namespace, job.Name)
+	propagation := metav1.DeletePropagationForeground
+	jo := metav1.DeleteOptions{PropagationPolicy: &propagation}
+	if err := c.kclient.BatchV1().Jobs(job.Namespace).Delete(c.ctx, job.Name, jo); ignoreNotFound(err) != nil {
+		log.Printf("failed to delete job '%s:%s': %v", job.Namespace, job.Name, err)
+	}
+}
+
+func (c *Kleaner) deletePods(pod *corev1.Pod) {
+	if c.dryRun {
+		log.Printf("dry-run: Pod '%s:%s' would have been deleted", pod.Namespace, pod.Name)
+	}
+	log.Printf("Deleting pod '%s:%s'", pod.Namespace, pod.Name)
+	var po metav1.DeleteOptions
+	if err := c.kclient.CoreV1().Pods(pod.Namespace).Delete(c.ctx, pod.Name, po); ignoreNotFound(err) != nil {
+		log.Printf("failed to delete pod '%s:%s': %v", pod.Namespace, pod.Name, err)
+	}
+}
+
+func podOwnedByJob(pod *corev1.Pod) bool {
+	// Going all over the owners, looking for a job, usually there is only one owner
+	for _, ow := range pod.OwnerReferences {
+		if ow.Kind == "Job" {
+			return true
+		}
+	}
+	return false
+}
+
+func extractPodFinishTime(podObj *corev1.Pod) time.Time {
 	for _, pc := range podObj.Status.Conditions {
 		// Looking for the time when pod's condition "Ready" became "false" (equals end of execution)
 		if pc.Type == corev1.PodReady && pc.Status == corev1.ConditionFalse {
-			return currentUnixTime.Sub(pc.LastTransitionTime.Time).Hours()
+			return pc.LastTransitionTime.Time
 		}
 	}
-
-	return 0.0
-}
-
-func (c *PodController) deleteObjects(podObj *corev1.Pod, parentJobName string) {
-	// Delete Job itself
-	if !c.dryRun {
-		log.Printf("Deleting job '%s'", parentJobName)
-		var jo metav1.DeleteOptions
-		if err := c.kclient.BatchV1().Jobs(podObj.Namespace).Delete(c.ctx, parentJobName, jo); ignoreNotFound(err) != nil {
-			log.Printf("failed to delete job %s: %v", parentJobName, err)
-		}
-	} else {
-		log.Printf("dry-run: Job '%s' would have been deleted", parentJobName)
-	}
-	// Delete Pod
-	if !c.dryRun {
-		log.Printf("Deleting pod '%s'", podObj.Name)
-		var po metav1.DeleteOptions
-		if err := c.kclient.CoreV1().Pods(podObj.Namespace).Delete(c.ctx, podObj.Name, po); ignoreNotFound(err) != nil {
-			log.Printf("failed to delete job's pod %s: %v", parentJobName, err)
-		}
-	} else {
-		log.Printf("dry-run: Pod '%s' would have been deleted", podObj.Name)
-	}
-	return
-}
-
-func (c *PodController) getParentJobName(podObj *corev1.Pod) (parentJobName string) {
-
-	if c.isLegacySystem {
-		var createdMeta CreatedByAnnotation
-		err := json.Unmarshal([]byte(podObj.ObjectMeta.Annotations["kubernetes.io/created-by"]), &createdMeta)
-		if err != nil {
-			log.Printf("failed to unmarshal annotations for pod %s. %v", podObj.Name, err)
-			return
-		}
-		if createdMeta.Reference.Kind == "Job" {
-			parentJobName = createdMeta.Reference.Name
-		}
-	} else {
-		// Going all over the owners, looking for a job, usually there is only one owner
-		for _, ow := range podObj.OwnerReferences {
-			if ow.Kind == "Job" {
-				parentJobName = ow.Name
-			}
-		}
-	}
-	return
+	return time.Time{}
 }
