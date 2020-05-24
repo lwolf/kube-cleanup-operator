@@ -37,10 +37,11 @@ func main() {
 	runOutsideCluster := flag.Bool("run-outside-cluster", false, "Set this flag when running outside of the cluster.")
 	namespace := flag.String("namespace", "", "Limit scope to a single namespaces")
 
-	deleteOrphanedAfter := flag.Duration("delete-orphaned-after", 1*time.Hour, "Delete orphaned pods. Pods without an owner in non-running state (golang duration format, e.g 5m), 0 - never delete")
-	deleteSuccessAfter := flag.Duration("delete-successful-after", 15*time.Minute, "Delete jobs in successful state after X duration (golang duration format, e.g 5m), 0 - never delete")
-	deleteFailedAfter := flag.Duration("delete-failed-after", 0, "Delete jobs in failed state after X duration (golang duration format, e.g 5m), 0 - never delete")
-	deletePendingAfter := flag.Duration("delete-pending-after", 0, "Delete jobs in pending state after X duration (golang duration format, e.g 5m), 0 - never delete")
+	deleteSuccessAfter := flag.Duration("delete-successful-after", 15*time.Minute, "Delete jobs and pods in successful state after X duration (golang duration format, e.g 5m), 0 - never delete")
+	deleteFailedAfter := flag.Duration("delete-failed-after", 0, "Delete jobs and pods in failed state after X duration (golang duration format, e.g 5m), 0 - never delete")
+	deleteOrphanedAfter := flag.Duration("delete-orphaned-pods-after", 1*time.Hour, "Delete orphaned pods. Pods without an owner in non-running state (golang duration format, e.g 5m), 0 - never delete")
+	deleteEvictedAfter := flag.Duration("delete-evicted-pods-after", 15*time.Minute, "Delete pods in evicted state (golang duration format, e.g 5m), 0 - never delete")
+	deletePendingAfter := flag.Duration("delete-pending-pods-after", 0, "Delete pods in pending state after X duration (golang duration format, e.g 5m), 0 - never delete")
 
 	legacyKeepSuccessHours := flag.Int64("keep-successful", 0, "Number of hours to keep successful jobs, -1 - forever, 0 - never (default), >0 number of hours")
 	legacyKeepFailedHours := flag.Int64("keep-failures", -1, "Number of hours to keep faild jobs, -1 - forever (default) 0 - never, >0 number of hours")
@@ -52,18 +53,32 @@ func main() {
 	setupLogging()
 
 	log.Println("Starting the application.")
-	log.Printf(
-		"Provided options: \n\t namespace: %s\n\t dry-run: %t\n\t delete-successful-after: %v\n\t delete-failed-after: %v\n\t delete-pending-after: %v\n\t delete-orphaned-after: %v\n",
-		*namespace, *dryRun, *deleteSuccessAfter, *deleteFailedAfter, *deletePendingAfter, deleteOrphanedAfter,
-	)
+	var optsInfo strings.Builder
+	optsInfo.WriteString("Provided options: \n")
+	optsInfo.WriteString(fmt.Sprintf("\tnamespace: %s\n", *namespace))
+	optsInfo.WriteString(fmt.Sprintf("\tdry-run: %v\n", *dryRun))
+	optsInfo.WriteString(fmt.Sprintf("\tdelete-successful-after: %s\n", *deleteSuccessAfter))
+	optsInfo.WriteString(fmt.Sprintf("\tdelete-failed-after: %s\n", *deleteFailedAfter))
+	optsInfo.WriteString(fmt.Sprintf("\tdelete-pending-after: %s\n", *deletePendingAfter))
+	optsInfo.WriteString(fmt.Sprintf("\tdelete-orphaned-after: %s\n", *deleteOrphanedAfter))
+	optsInfo.WriteString(fmt.Sprintf("\tdelete-evicted-after: %s\n", *deleteEvictedAfter))
 
-	var warning strings.Builder
-	warning.WriteString("\n!!! DEPRECATION WARNING !!!\n")
-	warning.WriteString("\t`keep-successful` is deprecated, use `delete-successful-after` instead\n")
-	warning.WriteString("\t`keep-failures` is deprecated, use `delete-failed-after` instead\n")
-	warning.WriteString("\t`keep-pending` is deprecated, use `delete-pending-after` instead\n")
-	warning.WriteString("\tThese fields are going to be removed in the next version\n")
-	fmt.Printf(warning.String())
+	optsInfo.WriteString(fmt.Sprintf("\n\tlegacy-mode: %v\n", *legacyMode))
+	optsInfo.WriteString(fmt.Sprintf("\tkeep-successful: %d\n", *legacyKeepSuccessHours))
+	optsInfo.WriteString(fmt.Sprintf("\tkeep-failures: %d\n", *legacyKeepFailedHours))
+	optsInfo.WriteString(fmt.Sprintf("\tkeep-pending: %d\n", *legacyKeepPendingHours))
+	log.Println(optsInfo.String())
+
+	if *legacyMode {
+		var warning strings.Builder
+		warning.WriteString("\n!!! DEPRECATION WARNING !!!\n")
+		warning.WriteString("\t Operator is running in `legacy` mode. Using old format of arguments. Please change the settings.\n")
+		warning.WriteString("\t`keep-successful` is deprecated, use `delete-successful-after` instead\n")
+		warning.WriteString("\t`keep-failures` is deprecated, use `delete-failed-after` instead\n")
+		warning.WriteString("\t`keep-pending` is deprecated, use `delete-pending-after` instead\n")
+		warning.WriteString(" These fields are going to be removed in the next version\n")
+		log.Println(warning.String())
+	}
 
 	sigsCh := make(chan os.Signal, 1) // Create channel to receive OS signals
 	stopCh := make(chan struct{})     // Create channel to receive stopCh signal
@@ -101,6 +116,7 @@ func main() {
 				*deleteFailedAfter,
 				*deletePendingAfter,
 				*deleteOrphanedAfter,
+				*deleteEvictedAfter,
 			).Run(stopCh)
 		}
 		wg.Done()
