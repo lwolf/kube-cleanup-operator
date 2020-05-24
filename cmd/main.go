@@ -105,7 +105,7 @@ func main() {
 				*legacyKeepSuccessHours,
 				*legacyKeepFailedHours,
 				*legacyKeepPendingHours,
-			)
+			).Run(stopCh)
 		} else {
 			controller.NewKleaner(
 				ctx,

@@ -71,6 +71,7 @@ func isLegacySystem(v version.Info) bool {
 // NewPodController creates a new NewPodController
 func NewPodController(ctx context.Context, kclient *kubernetes.Clientset, namespace string, dryRun bool, keepSuccessHours,
 	keepFailedHours, keepPendingHours int64) *PodController {
+
 	serverVersion, err := kclient.ServerVersion()
 	if err != nil {
 		log.Fatalf("Failed to retrieve server serverVersion %v", err)
