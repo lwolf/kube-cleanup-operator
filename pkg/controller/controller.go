@@ -227,6 +227,7 @@ func (c *Kleaner) deleteJobs(job *batchv1.Job) {
 func (c *Kleaner) deletePods(pod *corev1.Pod) {
 	if c.dryRun {
 		log.Printf("dry-run: Pod '%s:%s' would have been deleted", pod.Namespace, pod.Name)
+		return
 	}
 	log.Printf("Deleting pod '%s:%s'", pod.Namespace, pod.Name)
 	var po metav1.DeleteOptions
