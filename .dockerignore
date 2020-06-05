@@ -1,0 +1,7 @@
+bin/
+.idea/
+# Test binary, build with `go test -c`
+*.test
+*.iml
+*.md
+/.travis.yml
