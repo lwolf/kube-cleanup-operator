@@ -38,16 +38,14 @@ kubectl create -f https://k8s.io/examples/controllers/job.yaml
 ```docker pull quay.io/lwolf/kube-cleanup-operator```
 
 or you can build it yourself as follows:
-```
-$ make install_deps
-$ make build
-$ cp bin/kube-cleanup-operator .
+
+```console
 $ docker build .
 ```
 
 ## Development
 
-```
+```console
 $ make install_deps
 $ make build
 $ ./bin/kube-cleanup-operator -run-outside-cluster -dry-run=true
