@@ -301,7 +301,7 @@ func extractJobFinishTime(jobObj *batchv1.Job) time.Time {
 	}
 
 	for _, jc := range jobObj.Status.Conditions {
-		// Looking for the time when pod's condition "Failed" became "true" (equals end of execution)
+		// Looking for the time when job's condition "Failed" became "true" (equals end of execution)
 		if jc.Type == batchv1.JobFailed && jc.Status == corev1.ConditionTrue {
 			return jc.LastTransitionTime.Time
 		}
