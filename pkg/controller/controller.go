@@ -155,18 +155,26 @@ func (c *Kleaner) Process(obj interface{}) {
 			return
 		}
 		job := t
-		// skip the job if it hasn't completed yet or has any active pods
-		if job.Status.CompletionTime.IsZero() || job.Status.Active > 0 {
+		// skip the job if it has any active pods
+		if job.Status.Active > 0 {
 			return
 		}
-		timeSinceCompletion := time.Now().Sub(job.Status.CompletionTime.Time)
+
+		finishTime := extractJobFinishTime(job)
+
+		if finishTime.IsZero() {
+			return
+		}
+
+		timeSinceFinish := time.Now().Sub(finishTime)
+
 		if job.Status.Succeeded > 0 {
-			if c.deleteSuccessfulAfter > 0 && timeSinceCompletion > c.deleteSuccessfulAfter {
+			if c.deleteSuccessfulAfter > 0 && timeSinceFinish > c.deleteSuccessfulAfter {
 				c.deleteJobs(job)
 			}
 		}
 		if job.Status.Failed > 0 {
-			if c.deleteFailedAfter > 0 && timeSinceCompletion >= c.deleteFailedAfter {
+			if c.deleteFailedAfter > 0 && timeSinceFinish >= c.deleteFailedAfter {
 				c.deleteJobs(job)
 			}
 		}
@@ -283,5 +291,21 @@ func extractPodFinishTime(podObj *corev1.Pod) time.Time {
 			return pc.LastTransitionTime.Time
 		}
 	}
+	return time.Time{}
+}
+
+// Can return "zero" time, caller must check
+func extractJobFinishTime(jobObj *batchv1.Job) time.Time {
+	if !jobObj.Status.CompletionTime.IsZero() {
+		return jobObj.Status.CompletionTime.Time
+	}
+
+	for _, jc := range jobObj.Status.Conditions {
+		// Looking for the time when job's condition "Failed" became "true" (equals end of execution)
+		if jc.Type == batchv1.JobFailed && jc.Status == corev1.ConditionTrue {
+			return jc.LastTransitionTime.Time
+		}
+	}
+
 	return time.Time{}
 }
