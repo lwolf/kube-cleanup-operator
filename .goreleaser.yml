@@ -27,7 +27,7 @@ release:
   prerelease: true
 
 dockers:
-  - dockerfile: Dockerfile
+  - dockerfile: Dockerfile.releaser
     binaries:
       - kube-cleanup-operator
     goos: linux
