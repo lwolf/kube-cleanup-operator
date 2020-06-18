@@ -146,16 +146,13 @@ func main() {
 	wg.Add(1)
 	go func() {
 		for {
-			select {
-			case <-stopCh:
-				log.Println("shutting http server down")
-				err := server.Shutdown(ctx)
-				if err != nil {
-					log.Printf("failed to shutdown metrics server: %v\n", err)
-				}
-				wg.Done()
-				return
+			<-stopCh
+			log.Println("shutting http server down")
+			err := server.Shutdown(ctx)
+			if err != nil {
+				log.Printf("failed to shutdown metrics server: %v\n", err)
 			}
+			wg.Done()
 		}
 	}()
 
@@ -168,7 +165,7 @@ func main() {
 func newClientSet(runOutsideCluster bool) (*kubernetes.Clientset, error) {
 	kubeConfigLocation := ""
 
-	if runOutsideCluster == true {
+	if runOutsideCluster {
 		if os.Getenv("KUBECONFIG") != "" {
 			kubeConfigLocation = filepath.Join(os.Getenv("KUBECONFIG"))
 		} else {

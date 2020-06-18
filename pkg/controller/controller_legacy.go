@@ -37,13 +37,13 @@ type PodController struct {
 // CreatedByAnnotation type used to match pods created by job
 type CreatedByAnnotation struct {
 	Kind       string
-	ApiVersion string
+	APIVersion string
 	Reference  struct {
 		Kind            string
 		Namespace       string
 		Name            string
-		Uid             string
-		ApiVersion      string
+		UID             string
+		APIVersion      string
 		ResourceVersion string
 	}
 }
@@ -210,7 +210,6 @@ func (c *PodController) deleteObjects(podObj *corev1.Pod, parentJobName string) 
 	} else {
 		log.Printf("dry-run: Pod '%s' would have been deleted", podObj.Name)
 	}
-	return
 }
 
 func (c *PodController) getParentJobName(podObj *corev1.Pod) (parentJobName string) {
