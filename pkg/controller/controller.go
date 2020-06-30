@@ -165,7 +165,7 @@ func (c *Kleaner) Process(obj interface{}) {
 			return
 		}
 
-		finishTime := extractJobFinishTime(job)
+		finishTime := jobFinishTime(job)
 
 		if finishTime.IsZero() {
 			return
@@ -191,22 +191,19 @@ func (c *Kleaner) Process(obj interface{}) {
 		}
 		pod := t
 		owners := getPodOwnerKinds(pod)
-		podFinishTime := extractPodFinishTime(pod)
-		if podFinishTime.IsZero() {
-			return
-		}
-		age := time.Since(podFinishTime)
-		// orphaned pod: those that do not have any owner references
-		// - uses c.deleteOrphanedAfter
-		if len(owners) == 0 {
-			if c.deleteOrphanedAfter > 0 && age >= c.deleteOrphanedAfter {
-				c.deletePods(pod)
+		podFinishTime := podFinishTime(pod)
+		if !podFinishTime.IsZero() {
+			age := time.Since(podFinishTime)
+			// orphaned pod: those that do not have any owner references
+			// - uses c.deleteOrphanedAfter
+			if len(owners) == 0 {
+				if c.deleteOrphanedAfter > 0 && age >= c.deleteOrphanedAfter {
+					c.deletePod(pod)
+				}
 			}
-			return
-		}
-		// owned by job, have exactly one ownerReference present and its kind is Job
-		//  - uses the c.deleteSuccessfulAfter, c.deleteFailedAfter, c.deletePendingAfter
-		if isOwnedByJob(owners) {
+			// owned by job, have exactly one ownerReference present and its kind is Job
+			//  - uses the c.deleteSuccessfulAfter, c.deleteFailedAfter, c.deletePendingAfter
+			if isOwnedByJob(owners) {
 			jobOwnerName := pod.OwnerReferences[0].Name
 			jobOwner, exists, err := c.jobInformer.GetStore().GetByKey(pod.Namespace + "/" + jobOwnerName)
 			if err != nil {
@@ -215,16 +212,26 @@ func (c *Kleaner) Process(obj interface{}) {
 			} else if exists && isOwnedByCronJob(getJobOwnerKinds(jobOwner.(*batchv1.Job))) {
 				return
 			}
-			toDelete := c.maybeDeletePod(pod.Status.Phase, age)
-			if toDelete {
-				c.deletePods(pod)
+				toDelete := c.maybeDeletePod(pod.Status.Phase, age)
+				if toDelete {
+					c.deletePod(pod)
+				}
+				return
 			}
-			return
 		}
 		// evicted pods, those with or without owner references, but in Evicted state
 		//  - uses c.deleteEvictedAfter
-		if pod.Status.Phase == corev1.PodFailed && pod.Status.Reason == "Evicted" && c.deleteEvictedAfter > 0 && age >= c.deleteEvictedAfter {
-			c.deletePods(pod)
+		if pod.Status.Phase == corev1.PodFailed && pod.Status.Reason == "Evicted" && c.deleteEvictedAfter > 0 {
+			c.deletePod(pod)
+		}
+		if pod.Status.Phase == corev1.PodPending && c.deletePendingAfter > 0 {
+			t := podLastTransitionTime(pod)
+			if t.IsZero() {
+				return
+			}
+			if time.Now().Sub(t) >= c.deleteEvictedAfter {
+				c.deletePod(pod)
+			}
 		}
 	}
 }
@@ -245,7 +252,7 @@ func (c *Kleaner) deleteJobs(job *batchv1.Job) {
 	metrics.GetOrCreateCounter(metricName(jobDeletedMetric, job.Namespace)).Inc()
 }
 
-func (c *Kleaner) deletePods(pod *corev1.Pod) {
+func (c *Kleaner) deletePod(pod *corev1.Pod) {
 	if c.dryRun {
 		log.Printf("dry-run: Pod '%s:%s' would have been deleted", pod.Namespace, pod.Name)
 		return
@@ -268,10 +275,6 @@ func (c *Kleaner) maybeDeletePod(podPhase corev1.PodPhase, timeSinceFinish time.
 		}
 	case corev1.PodFailed:
 		if c.deleteFailedAfter > 0 && timeSinceFinish >= c.deleteFailedAfter {
-			return true
-		}
-	case corev1.PodPending:
-		if c.deletePendingAfter > 0 && timeSinceFinish >= c.deletePendingAfter {
 			return true
 		}
 	default:
@@ -314,7 +317,16 @@ func isOwnedByCronJob(ownerKinds []string) bool {
 	return false
 }
 
-func extractPodFinishTime(podObj *corev1.Pod) time.Time {
+func podLastTransitionTime(podObj *corev1.Pod) time.Time {
+	for _, pc := range podObj.Status.Conditions {
+		if pc.Type == corev1.PodScheduled && pc.Status == corev1.ConditionFalse {
+			return pc.LastTransitionTime.Time
+		}
+	}
+	return time.Time{}
+}
+
+func podFinishTime(podObj *corev1.Pod) time.Time {
 	for _, pc := range podObj.Status.Conditions {
 		// Looking for the time when pod's condition "Ready" became "false" (equals end of execution)
 		if pc.Type == corev1.PodReady && pc.Status == corev1.ConditionFalse {
@@ -325,7 +337,7 @@ func extractPodFinishTime(podObj *corev1.Pod) time.Time {
 }
 
 // Can return "zero" time, caller must check
-func extractJobFinishTime(jobObj *batchv1.Job) time.Time {
+func jobFinishTime(jobObj *batchv1.Job) time.Time {
 	if !jobObj.Status.CompletionTime.IsZero() {
 		return jobObj.Status.CompletionTime.Time
 	}
