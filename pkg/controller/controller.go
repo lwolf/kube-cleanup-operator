@@ -160,13 +160,18 @@ func (c *Kleaner) Process(obj interface{}) {
 			return
 		}
 
+		owners := getJobOwnerKinds(job)
+		if isOwnedByCronJob(owners) {
+			return
+		}
+
 		finishTime := extractJobFinishTime(job)
 
 		if finishTime.IsZero() {
 			return
 		}
 
-		timeSinceFinish := time.Now().Sub(finishTime)
+		timeSinceFinish := time.Since(finishTime)
 
 		if job.Status.Succeeded > 0 {
 			if c.deleteSuccessfulAfter > 0 && timeSinceFinish > c.deleteSuccessfulAfter {
@@ -190,7 +195,7 @@ func (c *Kleaner) Process(obj interface{}) {
 		if podFinishTime.IsZero() {
 			return
 		}
-		age := time.Now().Sub(podFinishTime)
+		age := time.Since(podFinishTime)
 		// orphaned pod: those that do not have any owner references
 		// - uses c.deleteOrphanedAfter
 		if len(owners) == 0 {
@@ -202,6 +207,14 @@ func (c *Kleaner) Process(obj interface{}) {
 		// owned by job, have exactly one ownerReference present and its kind is Job
 		//  - uses the c.deleteSuccessfulAfter, c.deleteFailedAfter, c.deletePendingAfter
 		if isOwnedByJob(owners) {
+			jobOwnerName := pod.OwnerReferences[0].Name
+			jobOwner, exists, err := c.jobInformer.GetStore().GetByKey(pod.Namespace + "/" + jobOwnerName)
+			if err != nil {
+				log.Printf("Can't find job '%s:%s`", pod.Namespace, jobOwnerName)
+
+			} else if exists && isOwnedByCronJob(getJobOwnerKinds(jobOwner.(*batchv1.Job))) {
+				return
+			}
 			toDelete := c.maybeDeletePod(pod.Status.Phase, age)
 			if toDelete {
 				c.deletePods(pod)
@@ -275,10 +288,27 @@ func getPodOwnerKinds(pod *corev1.Pod) []string {
 	return kinds
 }
 
+func getJobOwnerKinds(job *batchv1.Job) []string {
+	var kinds []string
+	for _, ow := range job.OwnerReferences {
+		kinds = append(kinds, ow.Kind)
+	}
+	return kinds
+}
+
 // isOwnedByJob returns true if and only if pod has a single owner
 // and this owners kind is Job
 func isOwnedByJob(ownerKinds []string) bool {
 	if len(ownerKinds) == 1 && ownerKinds[0] == "Job" {
+		return true
+	}
+	return false
+}
+
+// isOwnedByCronJob returns true if and only if job has a single owner CronJob
+// and this owners kind is CronJob
+func isOwnedByCronJob(ownerKinds []string) bool {
+	if len(ownerKinds) == 1 && ownerKinds[0] == "CronJob" {
 		return true
 	}
 	return false
