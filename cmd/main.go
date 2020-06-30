@@ -145,6 +145,7 @@ func main() {
 
 	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			<-stopCh
 			log.Println("shutting http server down")
@@ -152,7 +153,7 @@ func main() {
 			if err != nil {
 				log.Printf("failed to shutdown metrics server: %v\n", err)
 			}
-			wg.Done()
+			break
 		}
 	}()
 
