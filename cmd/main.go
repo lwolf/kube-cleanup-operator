@@ -37,7 +37,7 @@ func setupLogging() {
 
 func main() {
 	runOutsideCluster := flag.Bool("run-outside-cluster", false, "Set this flag when running outside of the cluster.")
-	namespace := flag.String("namespace", "", "Limit scope to a single namespaces")
+	namespace := flag.String("namespace", "", "Limit scope to a single namespace")
 	listenAddr := flag.String("listen-addr", "0.0.0.0:7000", "Address to expose metrics.")
 
 	deleteSuccessAfter := flag.Duration("delete-successful-after", 15*time.Minute, "Delete jobs and pods in successful state after X duration (golang duration format, e.g 5m), 0 - never delete")
@@ -47,7 +47,7 @@ func main() {
 	deletePendingAfter := flag.Duration("delete-pending-pods-after", 0, "Delete pods in pending state after X duration (golang duration format, e.g 5m), 0 - never delete")
 
 	legacyKeepSuccessHours := flag.Int64("keep-successful", 0, "Number of hours to keep successful jobs, -1 - forever, 0 - never (default), >0 number of hours")
-	legacyKeepFailedHours := flag.Int64("keep-failures", -1, "Number of hours to keep faild jobs, -1 - forever (default) 0 - never, >0 number of hours")
+	legacyKeepFailedHours := flag.Int64("keep-failures", -1, "Number of hours to keep failed jobs, -1 - forever (default) 0 - never, >0 number of hours")
 	legacyKeepPendingHours := flag.Int64("keep-pending", -1, "Number of hours to keep pending jobs, -1 - forever (default) >0 number of hours")
 	legacyMode := flag.Bool("legacy-mode", true, "Legacy mode: `true` - use old `keep-*` flags, `false` - enable new `delete-*-after` flags")
 
