@@ -59,11 +59,11 @@ Pre v0.7.0
     $ ./bin/kube-cleanup-operator --help
     Usage of ./bin/kube-cleanup-operator:
       -namespace string
-            Watch only this namespaces (omit to operate clusterwide)
+            Watch only this namespace (omit to operate clusterwide)
       -run-outside-cluster
             Set this flag when running outside of the cluster.
       -keep-successful
-            the number of hours to keep a succesfull job
+            the number of hours to keep a successful job
             -1 - forever 
             0  - never (default)
             >0 - number of hours
@@ -98,7 +98,7 @@ Usage of ./bin/kube-cleanup-operator:
   -dry-run
         Print only, do not delete anything.
   -keep-failures int
-        Number of hours to keep faild jobs, -1 - forever (default) 0 - never, >0 number of hours (default -1)
+        Number of hours to keep failed jobs, -1 - forever (default) 0 - never, >0 number of hours (default -1)
   -keep-pending int
         Number of hours to keep pending jobs, -1 - forever (default) >0 number of hours (default -1)
   -keep-successful int
@@ -108,7 +108,7 @@ Usage of ./bin/kube-cleanup-operator:
   -listen-addr string
         Address to expose metrics. (default "0.0.0.0:7000")
   -namespace string
-        Limit scope to a single namespaces
+        Limit scope to a single namespace
   -run-outside-cluster
         Set this flag when running outside of the cluster.
 ```
