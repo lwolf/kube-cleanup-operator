@@ -2,14 +2,14 @@ NAME := kube-cleanup-operator
 AUTHOR=lwolf
 VERSION ?= 0.6.0
 REGISTRY ?= quay.io
-GIT_SHA=$(shell git --no-pager describe --always --dirty)
+GIT_SHA=$(shell git rev-list --count HEAD)-$(shell git rev-parse --short=7 HEAD)
 COMMIT_TIME=$(shell git show --format=%ct --no-patch)
 LFLAGS ?= -X main.gitsha=${GIT_SHA} -X main.committed=${COMMIT_TIME}
 ROOT_DIR=${PWD}
 GOVERSION ?= 1.14.0
 HARDWARE=$(shell uname -m)
 
-.PHONY: build docker static release install_deps
+.PHONY: build docker static release install_deps test
 
 default: build
 
@@ -25,6 +25,9 @@ build: golang
 	@echo "--> Compiling the project"
 	@mkdir -p bin
 	go build -mod=vendor -ldflags "${LFLAGS}" -o bin/$(NAME) ./cmd
+
+test:
+	go test -race ./pkg/... -coverprofile=coverage.txt -covermode=atomic
 
 static: golang 
 	@echo "--> Compiling the static binary"

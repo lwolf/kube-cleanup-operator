@@ -24,6 +24,11 @@ import (
 	"github.com/lwolf/kube-cleanup-operator/pkg/controller"
 )
 
+var (
+	gitsha    string
+	committed string
+)
+
 func setupLogging() {
 	// Set logging output to standard console out
 	log.SetOutput(os.Stdout)
@@ -45,6 +50,7 @@ func main() {
 	deleteOrphanedAfter := flag.Duration("delete-orphaned-pods-after", 1*time.Hour, "Delete orphaned pods. Pods without an owner in non-running state (golang duration format, e.g 5m), 0 - never delete")
 	deleteEvictedAfter := flag.Duration("delete-evicted-pods-after", 15*time.Minute, "Delete pods in evicted state (golang duration format, e.g 5m), 0 - never delete")
 	deletePendingAfter := flag.Duration("delete-pending-pods-after", 0, "Delete pods in pending state after X duration (golang duration format, e.g 5m), 0 - never delete")
+	ignoreOwnedByCronjob := flag.Bool("ignore-owned-by-cronjobs", false, "[EXPERIMENTAL] Do not cleanup pods and jobs created by cronjobs")
 
 	legacyKeepSuccessHours := flag.Int64("keep-successful", 0, "Number of hours to keep successful jobs, -1 - forever, 0 - never (default), >0 number of hours")
 	legacyKeepFailedHours := flag.Int64("keep-failures", -1, "Number of hours to keep failed jobs, -1 - forever (default) 0 - never, >0 number of hours")
@@ -55,7 +61,7 @@ func main() {
 	flag.Parse()
 	setupLogging()
 
-	log.Println("Starting the application.")
+	log.Printf("Starting the application. Version: %s, CommitTime: %s\n", gitsha, committed)
 	var optsInfo strings.Builder
 	optsInfo.WriteString("Provided options: \n")
 	optsInfo.WriteString(fmt.Sprintf("\tnamespace: %s\n", *namespace))
@@ -65,6 +71,7 @@ func main() {
 	optsInfo.WriteString(fmt.Sprintf("\tdelete-pending-after: %s\n", *deletePendingAfter))
 	optsInfo.WriteString(fmt.Sprintf("\tdelete-orphaned-after: %s\n", *deleteOrphanedAfter))
 	optsInfo.WriteString(fmt.Sprintf("\tdelete-evicted-after: %s\n", *deleteEvictedAfter))
+	optsInfo.WriteString(fmt.Sprintf("\tignore-owned-by-cronjobs: %v\n", *ignoreOwnedByCronjob))
 
 	optsInfo.WriteString(fmt.Sprintf("\n\tlegacy-mode: %v\n", *legacyMode))
 	optsInfo.WriteString(fmt.Sprintf("\tkeep-successful: %d\n", *legacyKeepSuccessHours))
@@ -121,6 +128,7 @@ func main() {
 				*deletePendingAfter,
 				*deleteOrphanedAfter,
 				*deleteEvictedAfter,
+				*ignoreOwnedByCronjob,
 				stopCh,
 			).Run()
 		}

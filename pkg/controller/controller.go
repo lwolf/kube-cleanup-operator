@@ -50,6 +50,8 @@ type Kleaner struct {
 	deleteOrphanedAfter   time.Duration
 	deleteEvictedAfter    time.Duration
 
+	ignoreOwnedByCronjob bool
+
 	dryRun bool
 	ctx    context.Context
 	stopCh <-chan struct{}
@@ -57,7 +59,8 @@ type Kleaner struct {
 
 // NewKleaner creates a new NewKleaner
 func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace string, dryRun bool, deleteSuccessfulAfter,
-	deleteFailedAfter, deletePendingAfter, deleteOrphanedAfter, deleteEvictedAfter time.Duration, stopCh <-chan struct{}) *Kleaner {
+	deleteFailedAfter, deletePendingAfter, deleteOrphanedAfter, deleteEvictedAfter time.Duration, ignoreOwnedByCronjob bool,
+	stopCh <-chan struct{}) *Kleaner {
 	jobInformer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
@@ -95,6 +98,7 @@ func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace st
 		deletePendingAfter:    deletePendingAfter,
 		deleteOrphanedAfter:   deleteOrphanedAfter,
 		deleteEvictedAfter:    deleteEvictedAfter,
+		ignoreOwnedByCronjob:  ignoreOwnedByCronjob,
 	}
 	jobInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, new interface{}) {
@@ -154,87 +158,32 @@ func (c *Kleaner) Process(obj interface{}) {
 		if !t.DeletionTimestamp.IsZero() {
 			return
 		}
-		job := t
-		// skip the job if it has any active pods
-		if job.Status.Active > 0 {
-			return
+		if shouldDeleteJob(t, c.deleteSuccessfulAfter, c.deleteFailedAfter, c.ignoreOwnedByCronjob) {
+			c.DeleteJob(t)
 		}
-
-		owners := getJobOwnerKinds(job)
-		if isOwnedByCronJob(owners) {
-			return
-		}
-
-		finishTime := extractJobFinishTime(job)
-
-		if finishTime.IsZero() {
-			return
-		}
-
-		timeSinceFinish := time.Since(finishTime)
-
-		if job.Status.Succeeded > 0 {
-			if c.deleteSuccessfulAfter > 0 && timeSinceFinish > c.deleteSuccessfulAfter {
-				c.deleteJobs(job)
-			}
-		}
-		if job.Status.Failed > 0 {
-			if c.deleteFailedAfter > 0 && timeSinceFinish >= c.deleteFailedAfter {
-				c.deleteJobs(job)
-			}
-		}
-
 	case *corev1.Pod:
-		// skip pods that are already in the deleting process
-		if !t.DeletionTimestamp.IsZero() {
-			return
-		}
 		pod := t
-		owners := getPodOwnerKinds(pod)
-		podFinishTime := extractPodFinishTime(pod)
-		if podFinishTime.IsZero() {
+		// skip pods that are already in the deleting process
+		if !pod.DeletionTimestamp.IsZero() {
 			return
 		}
-		age := time.Since(podFinishTime)
-		// orphaned pod: those that do not have any owner references
-		// - uses c.deleteOrphanedAfter
-		if len(owners) == 0 {
-			if c.deleteOrphanedAfter > 0 && age >= c.deleteOrphanedAfter {
-				c.deletePods(pod)
-			}
+		// skip pods related to jobs created by cronjobs if `ignoreOwnedByCronjob` is set
+		if c.ignoreOwnedByCronjob && podRelatedToCronJob(pod, c.jobInformer.GetStore()) {
 			return
 		}
-		// owned by job, have exactly one ownerReference present and its kind is Job
-		//  - uses the c.deleteSuccessfulAfter, c.deleteFailedAfter, c.deletePendingAfter
-		if isOwnedByJob(owners) {
-			jobOwnerName := pod.OwnerReferences[0].Name
-			jobOwner, exists, err := c.jobInformer.GetStore().GetByKey(pod.Namespace + "/" + jobOwnerName)
-			if err != nil {
-				log.Printf("Can't find job '%s:%s`", pod.Namespace, jobOwnerName)
-
-			} else if exists && isOwnedByCronJob(getJobOwnerKinds(jobOwner.(*batchv1.Job))) {
-				return
-			}
-			toDelete := c.maybeDeletePod(pod.Status.Phase, age)
-			if toDelete {
-				c.deletePods(pod)
-			}
-			return
-		}
-		// evicted pods, those with or without owner references, but in Evicted state
-		//  - uses c.deleteEvictedAfter
-		if pod.Status.Phase == corev1.PodFailed && pod.Status.Reason == "Evicted" && c.deleteEvictedAfter > 0 && age >= c.deleteEvictedAfter {
-			c.deletePods(pod)
+		// normal cleanup flow
+		if shouldDeletePod(t, c.deleteOrphanedAfter, c.deletePendingAfter, c.deleteEvictedAfter, c.deleteSuccessfulAfter, c.deleteFailedAfter) {
+			c.DeletePod(t)
 		}
 	}
 }
 
-func (c *Kleaner) deleteJobs(job *batchv1.Job) {
+func (c *Kleaner) DeleteJob(job *batchv1.Job) {
 	if c.dryRun {
 		log.Printf("dry-run: Job '%s:%s' would have been deleted", job.Namespace, job.Name)
 		return
 	}
-	log.Printf("Deleting job '%s:%s'", job.Namespace, job.Name)
+	log.Printf("Deleting job '%s/%s'", job.Namespace, job.Name)
 	propagation := metav1.DeletePropagationForeground
 	jo := metav1.DeleteOptions{PropagationPolicy: &propagation}
 	if err := c.kclient.BatchV1().Jobs(job.Namespace).Delete(c.ctx, job.Name, jo); ignoreNotFound(err) != nil {
@@ -245,12 +194,12 @@ func (c *Kleaner) deleteJobs(job *batchv1.Job) {
 	metrics.GetOrCreateCounter(metricName(jobDeletedMetric, job.Namespace)).Inc()
 }
 
-func (c *Kleaner) deletePods(pod *corev1.Pod) {
+func (c *Kleaner) DeletePod(pod *corev1.Pod) {
 	if c.dryRun {
 		log.Printf("dry-run: Pod '%s:%s' would have been deleted", pod.Namespace, pod.Name)
 		return
 	}
-	log.Printf("Deleting pod '%s:%s'", pod.Namespace, pod.Name)
+	log.Printf("Deleting pod '%s/%s'", pod.Namespace, pod.Name)
 	var po metav1.DeleteOptions
 	if err := c.kclient.CoreV1().Pods(pod.Namespace).Delete(c.ctx, pod.Name, po); ignoreNotFound(err) != nil {
 		log.Printf("failed to delete pod '%s:%s': %v", pod.Namespace, pod.Name, err)
@@ -258,84 +207,4 @@ func (c *Kleaner) deletePods(pod *corev1.Pod) {
 		return
 	}
 	metrics.GetOrCreateCounter(metricName(podDeletedMetric, pod.Namespace)).Inc()
-}
-
-func (c *Kleaner) maybeDeletePod(podPhase corev1.PodPhase, timeSinceFinish time.Duration) bool {
-	switch podPhase {
-	case corev1.PodSucceeded:
-		if c.deleteSuccessfulAfter > 0 && timeSinceFinish >= c.deleteSuccessfulAfter {
-			return true
-		}
-	case corev1.PodFailed:
-		if c.deleteFailedAfter > 0 && timeSinceFinish >= c.deleteFailedAfter {
-			return true
-		}
-	case corev1.PodPending:
-		if c.deletePendingAfter > 0 && timeSinceFinish >= c.deletePendingAfter {
-			return true
-		}
-	default:
-		return false
-	}
-	return false
-}
-
-func getPodOwnerKinds(pod *corev1.Pod) []string {
-	var kinds []string
-	for _, ow := range pod.OwnerReferences {
-		kinds = append(kinds, ow.Kind)
-	}
-	return kinds
-}
-
-func getJobOwnerKinds(job *batchv1.Job) []string {
-	var kinds []string
-	for _, ow := range job.OwnerReferences {
-		kinds = append(kinds, ow.Kind)
-	}
-	return kinds
-}
-
-// isOwnedByJob returns true if and only if pod has a single owner
-// and this owners kind is Job
-func isOwnedByJob(ownerKinds []string) bool {
-	if len(ownerKinds) == 1 && ownerKinds[0] == "Job" {
-		return true
-	}
-	return false
-}
-
-// isOwnedByCronJob returns true if and only if job has a single owner CronJob
-// and this owners kind is CronJob
-func isOwnedByCronJob(ownerKinds []string) bool {
-	if len(ownerKinds) == 1 && ownerKinds[0] == "CronJob" {
-		return true
-	}
-	return false
-}
-
-func extractPodFinishTime(podObj *corev1.Pod) time.Time {
-	for _, pc := range podObj.Status.Conditions {
-		// Looking for the time when pod's condition "Ready" became "false" (equals end of execution)
-		if pc.Type == corev1.PodReady && pc.Status == corev1.ConditionFalse {
-			return pc.LastTransitionTime.Time
-		}
-	}
-	return time.Time{}
-}
-
-// Can return "zero" time, caller must check
-func extractJobFinishTime(jobObj *batchv1.Job) time.Time {
-	if !jobObj.Status.CompletionTime.IsZero() {
-		return jobObj.Status.CompletionTime.Time
-	}
-
-	for _, jc := range jobObj.Status.Conditions {
-		// Looking for the time when job's condition "Failed" became "true" (equals end of execution)
-		if jc.Type == batchv1.JobFailed && jc.Status == corev1.ConditionTrue {
-			return jc.LastTransitionTime.Time
-		}
-	}
-
-	return time.Time{}
 }
