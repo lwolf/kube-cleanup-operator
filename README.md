@@ -13,6 +13,15 @@ Some common use-case scenarios:
 * Delete Pods in Evicted state
 * Delete orphaned Pods (Pods without an owner in non-running state)
 
+| flag name                  | pod                                                   | job                           |
+| -------------------------- | ----------------------------------------------------- | ----------------------------- |
+| delete-successful-after    | delete after specified period if owned by the job     | delete after specified period |
+| delete-failed-after        | delete after specified period if owned by the job     | delete after specified period |
+| delete-orphaned-pods-after | delete after specified period (any completion status) | N/A                           |
+| delete-evicted-pods-after  | delete on discovery                                   | N/A                           |
+| delete-pending-pods-after  | delete after specified period                         | N/A                           |
+
+
 ## Usage
 
 ![screensharing](http://g.recordit.co/aDU52FJIwP.gif)
@@ -97,6 +106,8 @@ Usage of ./bin/kube-cleanup-operator:
         Delete jobs and pods in successful state after X duration (golang duration format, e.g 5m), 0 - never delete (default 15m0s)
   -dry-run
         Print only, do not delete anything.
+  -ignore-owned-by-cronjobs
+        [EXPERIMENTAL] Do not cleanup pods and jobs created by cronjobs
   -keep-failures int
         Number of hours to keep failed jobs, -1 - forever (default) 0 - never, >0 number of hours (default -1)
   -keep-pending int
