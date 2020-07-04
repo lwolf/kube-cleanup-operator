@@ -3,6 +3,7 @@
 [![Build Status](https://travis-ci.org/lwolf/kube-cleanup-operator.svg?branch=master)](https://travis-ci.org/lwolf/kube-cleanup-operator)
 [![Go Report Card](https://goreportcard.com/badge/github.com/lwolf/kube-cleanup-operator)](https://goreportcard.com/report/github.com/lwolf/kube-cleanup-operator)
 [![Docker Repository on Quay](https://quay.io/repository/lwolf/kube-cleanup-operator/status "Docker Repository on Quay")](https://quay.io/repository/lwolf/kube-cleanup-operator)
+[![codecov](https://codecov.io/gh/lwolf/kube-cleanup-operator/branch/master/graph/badge.svg)](https://codecov.io/gh/lwolf/kube-cleanup-operator)
 
 Kubernetes Controller to automatically delete completed Jobs and Pods.
 Controller listens for changes in Pods and Jobs and acts accordingly with config arguments.
