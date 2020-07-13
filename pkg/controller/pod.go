@@ -83,7 +83,7 @@ func getPodOwnerKinds(pod *corev1.Pod) []string {
 // isOwnedByJob returns true if and only if pod has a single owner
 // and this owners kind is Job
 func isOwnedByJob(ownerKinds []string) bool {
-	if len(ownerKinds) == 1 && ownerKinds[0] == "Job" {
+	if len(ownerKinds) == 1 && (ownerKinds[0] == "Workflow" || ownerKinds[0] == "Job") {
 		return true
 	}
 	return false
