@@ -89,7 +89,7 @@ func TestKleaner_DeleteJob(t *testing.T) {
 			ignoreCron: false,
 			expected:   false,
 		},
-		"DeadlineExceeded jobs should be deleted": {
+		"failed (based on JobCondition) but not marked as failed jobs should be deleted": {
 			jobSpec: createJob(false, time.Time{}, 0, 0, 0, []batchv1.JobCondition{
 				batchv1.JobCondition{
 					Type:               batchv1.JobFailed,
@@ -106,23 +106,30 @@ func TestKleaner_DeleteJob(t *testing.T) {
 			expected:   true,
 		},
 		"successful but 'active' jobs should be deleted": {
-			jobSpec: createJob(false, ts.Add(-time.Minute), 1, 1, 0, []batchv1.JobCondition{
-				batchv1.JobCondition{
-					Type:               batchv1.JobComplete,
-					Status:             corev1.ConditionTrue,
-					LastProbeTime:      metav1.NewTime(ts),
-					LastTransitionTime: metav1.NewTime(ts.Add(-time.Minute)),
-					Reason:             "",
-					Message:            "",
-				},
-			}),
+			jobSpec:    createJob(false, ts.Add(-time.Minute), 1, 1, 0, []batchv1.JobCondition{}),
 			successful: time.Second,
 			failed:     time.Second,
 			ignoreCron: false,
 			expected:   true,
 		},
 		"failed but 'active' jobs should be deleted": {
-			jobSpec:    createJob(false, ts.Add(-time.Minute), 0, 1, 1, []batchv1.JobCondition{}),
+			jobSpec:    createJob(false, ts.Add(-time.Minute), 1, 0, 1, []batchv1.JobCondition{}),
+			successful: time.Second,
+			failed:     time.Second,
+			ignoreCron: false,
+			expected:   true,
+		},
+		"failed (based on JobCondition) but 'active' jobs should be deleted": {
+			jobSpec: createJob(false, ts.Add(-time.Minute), 1, 0, 0, []batchv1.JobCondition{
+				batchv1.JobCondition{
+					Type:               batchv1.JobFailed,
+					Status:             corev1.ConditionTrue,
+					LastProbeTime:      metav1.NewTime(ts),
+					LastTransitionTime: metav1.NewTime(ts.Add(-time.Minute)),
+					Reason:             "DeadlineExceeded",
+					Message:            "Job was active longer than specified deadline",
+				},
+			}),
 			successful: time.Second,
 			failed:     time.Second,
 			ignoreCron: false,
