@@ -8,11 +8,6 @@ import (
 )
 
 func shouldDeleteJob(job *batchv1.Job, deleteSuccessfulAfter, deleteFailedAfter time.Duration, ignoreCronJobs bool) bool {
-	// skip the job if it has any active pods
-	if job.Status.Active > 0 {
-		return false
-	}
-
 	if ignoreCronJobs {
 		owners := getJobOwnerKinds(job)
 		if isOwnedByCronJob(owners) {
@@ -33,7 +28,7 @@ func shouldDeleteJob(job *batchv1.Job, deleteSuccessfulAfter, deleteFailedAfter 
 			return true
 		}
 	}
-	if job.Status.Failed > 0 {
+	if isFailed(job) {
 		if deleteFailedAfter > 0 && timeSinceFinish >= deleteFailedAfter {
 			return true
 		}
@@ -63,6 +58,22 @@ func jobFinishTime(jobObj *batchv1.Job) time.Time {
 	}
 
 	return time.Time{}
+}
+
+func isFailed(jobObj *batchv1.Job) bool {
+    if jobObj.Status.Failed > 0 {
+        return true
+    }
+
+    // In case when Job fails due to the Deadline set on it (DeadlineExceeded), the job.Status.Failed does not contain a value
+    // Thus we have to iterate over job.Status.Conditions and look for a JobFailed in state "true".
+    for _, jc := range jobObj.Status.Conditions {
+        if jc.Type == batchv1.JobFailed && jc.Status == corev1.ConditionTrue {
+            return true
+        }
+    }
+
+    return false
 }
 
 // isOwnedByCronJob returns true if and only if job has a single owner CronJob
