@@ -28,7 +28,7 @@ spec:
       - args:
         - --namespace=default
         - --legacy-mode=false
-        image: quay.io/lwolf/kube-cleanup-operator
+        image: outreachmeeting.azurecr.io/kube-cleanup-operator:20200801.5-50fe00d843-guoweis-makebuild
         imagePullPolicy: Always
         name: cleanup-operator
         ports:
