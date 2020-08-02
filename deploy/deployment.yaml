@@ -26,7 +26,6 @@ spec:
       serviceAccountName: cleanup-operator
       containers:
       - args:
-        - --namespace=default
         - --legacy-mode=false
         image: outreachmeeting.azurecr.io/kube-cleanup-operator:20200801.5-50fe00d843-guoweis-makebuild
         imagePullPolicy: Always
