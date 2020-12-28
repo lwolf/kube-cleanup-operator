@@ -4,7 +4,6 @@ replicas: 1
 image:
   repository: quay.io/lwolf/kube-cleanup-operator
   pullPolicy: IfNotPresent
-  tag: latest
 
 ## Additional labels and annotations for the deployment resource
 ##

@@ -1,8 +1,10 @@
+---
+apiVersion: v2
 name: kube-cleanup-operator
-version: 1.0.0
-appVersion: 0.8.1
 description: Kubernetes Operator to automatically delete completed Jobs and their Pods
-apiVersion: v1
+type: application
+version: 1.0.0
+appVersion: v0.8.1
 keywords:
 - kubernetes
 - operator
