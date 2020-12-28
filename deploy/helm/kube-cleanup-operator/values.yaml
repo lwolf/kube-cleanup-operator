@@ -19,9 +19,9 @@ service:
   port: 80
 
   ## Additional labels and annotations for the service
-  annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "7000"
+  annotations: {}
+    # prometheus.io/scrape: "true"
+    # prometheus.io/port: "7000"
   labels: {}
 
 ## Resources to allocate to the pods
