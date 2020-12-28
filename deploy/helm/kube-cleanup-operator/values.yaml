@@ -88,16 +88,16 @@ rbac:
   # Specifies whether RBAC resources should be created
   create: true
 
-## Arguments for the exporter binary
+## Arguments for kube-cleanup-operator
 ##
-args:
-  - --namespace=default
-  - --delete-successful-after=5m
-  - --delete-failed-after=120m
-  - --delete-pending-pods-after=60m
-  - --delete-evicted-pods-after=60m
-  - --delete-orphaned-pods-after=60m
-  - --legacy-mode=false
+args: []
+  # - --namespace=default
+  # - --delete-successful-after=5m
+  # - --delete-failed-after=120m
+  # - --delete-pending-pods-after=60m
+  # - --delete-evicted-pods-after=60m
+  # - --delete-orphaned-pods-after=60m
+  # - --legacy-mode=false
 
 ## Environment variables for the container
 ##
