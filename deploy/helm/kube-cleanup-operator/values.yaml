@@ -1,0 +1,114 @@
+---
+replicas: 1
+
+image:
+  repository: quay.io/lwolf/kube-cleanup-operator
+  pullPolicy: IfNotPresent
+
+## Additional labels and annotations for the deployment resource
+##
+labels: {}
+annotations: {}
+
+## Additional labels and annotations for the pods
+podLabels: {}
+podAnnotations: {}
+
+service:
+  type: ClusterIP
+  port: 80
+
+  ## Additional labels and annotations for the service
+  annotations: {}
+    # prometheus.io/scrape: "true"
+    # prometheus.io/port: "7000"
+  labels: {}
+
+## Resources to allocate to the pods
+##
+resources:
+ limits:
+   cpu: 50m
+   memory: 64Mi
+ requests:
+   cpu: 50m
+   memory: 64Mi
+
+## Deployment strategy
+##
+strategy:
+  type: RollingUpdate
+
+## Liveness and Readiness probes
+##
+livenessProbe:
+  httpGet:
+    path: /metrics
+    port: 7000
+
+readinessProbe:
+  httpGet:
+    path: /metrics
+    port: 7000
+  initialDelaySeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 3
+  periodSeconds: 30
+
+## Node labels for pod assignment
+## ref: https://kubernetes.io/docs/user-guide/node-selection/
+#
+nodeSelector: {}
+
+## Tolerations for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+##
+tolerations: []
+
+## Affinity for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+##
+affinity: {}
+
+## Set the security context of the pods
+## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context
+##
+securityContext:
+  # runAsUser: 65534  # run as nobody user
+
+serviceAccount:
+  # Specifies whether a ServiceAccount should be created
+  create: true
+  # The name of the ServiceAccount to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name:
+
+rbac:
+  # Specifies whether RBAC resources should be created
+  create: true
+
+## Arguments for kube-cleanup-operator
+##
+args: []
+  # - --namespace=default
+  # - --delete-successful-after=5m
+  # - --delete-failed-after=120m
+  # - --delete-pending-pods-after=60m
+  # - --delete-evicted-pods-after=60m
+  # - --delete-orphaned-pods-after=60m
+  # - --legacy-mode=false
+
+## Environment variables for the container
+##
+envVariables: []
+
+
+## Manage a ServiceMonitor resource to automatically configure the endpoint
+## through the Prometheus operator: https://github.com/coreos/prometheus-operator
+serviceMonitor:
+  enabled: false
+  scrapeInterval: 10s
+
+  ## Additional labels and annotations for the service monitor
+  annotations: {}
+  labels: {}
