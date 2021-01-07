@@ -23,6 +23,19 @@ Some common use-case scenarios:
 | delete-pending-pods-after  | delete after specified period                         | N/A                           |
 
 
+## Helm chart
+
+Chart is available to install from https://charts.lwolf.org/ (https://github.com/lwolf/kube-charts)
+
+```
+$ helm repo add lwolf-charts http://charts.lwolf.org
+"lwolf-charts" has been added to your repositories
+$ helm search kube-cleanup
+NAME                              	CHART VERSION	APP VERSION	DESCRIPTION
+lwolf-charts/kube-cleanup-operator	1.0.0        	v0.8.1     	Kubernetes Operator to automatically delete completed Job...
+```
+
+
 ## Usage
 
 ![screensharing](http://g.recordit.co/aDU52FJIwP.gif)
