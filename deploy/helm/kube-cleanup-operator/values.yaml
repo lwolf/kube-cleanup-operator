@@ -86,6 +86,8 @@ serviceAccount:
 rbac:
   # Specifies whether RBAC resources should be created
   create: true
+  # Specifies whether RBAC should be cluster-wide or limited to namespace
+  global: false
 
 ## Arguments for kube-cleanup-operator
 ##
