@@ -1,6 +1,6 @@
-{{- if and .Values.rbac.create (not .Values.rbac.global) }}
+{{- if and .Values.rbac.create .Values.rbac.global }}
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRoleBinding
 metadata:
   name: {{ template "app.fullname" . }}
   labels:
@@ -9,23 +9,12 @@ metadata:
     helm.sh/chart: {{ include "app.chart" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
-rules:
-  - apiGroups:
-      - batch
-    resources:
-      - jobs
-    verbs:
-      - get
-      - list
-      - watch
-      - delete
-  - apiGroups:
-      - ""
-    resources:
-      - pods
-    verbs:
-      - get
-      - list
-      - watch
-      - delete
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ template "app.fullname" . }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "app.fullname" . }}
+  namespace: {{ .Release.Namespace }}
 {{- end }}

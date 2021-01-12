@@ -1,6 +1,6 @@
-{{- if and .Values.rbac.create (not .Values.rbac.global) }}
+{{- if and .Values.rbac.create .Values.rbac.global }}
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   name: {{ template "app.fullname" . }}
   labels:
@@ -10,22 +10,21 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
 rules:
-  - apiGroups:
-      - batch
-    resources:
-      - jobs
-    verbs:
-      - get
-      - list
-      - watch
-      - delete
-  - apiGroups:
-      - ""
-    resources:
-      - pods
-    verbs:
-      - get
-      - list
-      - watch
-      - delete
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+  - delete
+- apiGroups: ["batch", "extensions"]
+  resources:
+  - jobs
+  verbs:
+  - delete
+  - get
+  - list
+  - watch
 {{- end }}
