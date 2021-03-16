@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"strconv"
 	"time"
 
 	"github.com/VictoriaMetrics/metrics"
@@ -35,6 +36,14 @@ const (
 	podDeletedFailedMetric = "pods_deleted_failed_total"
 	jobDeletedFailedMetric = "jobs_deleted_failed_total"
 	jobDeletedMetric       = "jobs_deleted_total"
+
+	annotationPrefix                = "kleaner.lwolf.org/"
+	annotationDisabled              = annotationPrefix + "disabled"
+	annotationDeleteSuccessfulAfter = annotationPrefix + "delete-successful-after"
+	annotationDeleteFailedAfter     = annotationPrefix + "delete-failed-after"
+	annotationDeleteOrphanedAfter   = annotationPrefix + "delete-orphaned-after"
+	annotationDeleteEvictedAfter    = annotationPrefix + "delete-evicted-after"
+	annotationDeletePendingAfter    = annotationPrefix + "delete-pending-after"
 )
 
 // Kleaner watches the kubernetes api for changes to Pods and Jobs and
@@ -51,8 +60,9 @@ type Kleaner struct {
 	deleteEvictedAfter    time.Duration
 
 	ignoreOwnedByCronjob bool
-	
-	labelSelector        string
+
+	labelSelector      string
+	respectAnnotations bool
 
 	dryRun bool
 	ctx    context.Context
@@ -62,7 +72,7 @@ type Kleaner struct {
 // NewKleaner creates a new NewKleaner
 func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace string, dryRun bool, deleteSuccessfulAfter,
 	deleteFailedAfter, deletePendingAfter, deleteOrphanedAfter, deleteEvictedAfter time.Duration, ignoreOwnedByCronjob bool,
-	labelSelector string,
+	labelSelector string, respectAnnotations bool,
 	stopCh <-chan struct{}) *Kleaner {
 	jobInformer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
@@ -107,6 +117,7 @@ func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace st
 		deleteEvictedAfter:    deleteEvictedAfter,
 		ignoreOwnedByCronjob:  ignoreOwnedByCronjob,
 		labelSelector:         labelSelector,
+		respectAnnotations:    respectAnnotations,
 	}
 	jobInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, new interface{}) {
@@ -163,11 +174,13 @@ func (c *Kleaner) Process(obj interface{}) {
 	switch t := obj.(type) {
 	case *batchv1.Job:
 		// skip jobs that are already in the deleting process
-		if !t.DeletionTimestamp.IsZero() {
+		job := t
+
+		if !job.DeletionTimestamp.IsZero() {
 			return
 		}
-		if shouldDeleteJob(t, c.deleteSuccessfulAfter, c.deleteFailedAfter, c.ignoreOwnedByCronjob) {
-			c.DeleteJob(t)
+		if shouldDeleteJob(job, c.deleteSuccessfulAfter, c.deleteFailedAfter, c.ignoreOwnedByCronjob, c.respectAnnotations) {
+			c.DeleteJob(job)
 		}
 	case *corev1.Pod:
 		pod := t
@@ -175,12 +188,14 @@ func (c *Kleaner) Process(obj interface{}) {
 		if !pod.DeletionTimestamp.IsZero() {
 			return
 		}
+
 		// skip pods related to jobs created by cronjobs if `ignoreOwnedByCronjob` is set
 		if c.ignoreOwnedByCronjob && podRelatedToCronJob(pod, c.jobInformer.GetStore()) {
 			return
 		}
+
 		// normal cleanup flow
-		if shouldDeletePod(t, c.deleteOrphanedAfter, c.deletePendingAfter, c.deleteEvictedAfter, c.deleteSuccessfulAfter, c.deleteFailedAfter) {
+		if shouldDeletePod(t, c.deleteOrphanedAfter, c.deletePendingAfter, c.deleteEvictedAfter, c.deleteSuccessfulAfter, c.deleteFailedAfter, c.respectAnnotations) {
 			c.DeletePod(t)
 		}
 	}
@@ -215,4 +230,26 @@ func (c *Kleaner) DeletePod(pod *corev1.Pod) {
 		return
 	}
 	metrics.GetOrCreateCounter(metricName(podDeletedMetric, pod.Namespace)).Inc()
+}
+
+func isCleanupDisabled(annotations map[string]string) bool {
+	if val, found := annotations[annotationDisabled]; found {
+		disabled, err := strconv.ParseBool(val)
+		if err == nil && disabled {
+			return true
+		} else {
+			return false
+		}
+	} else {
+		return false
+	}
+}
+
+func overrideDuration(flag *time.Duration, annotationKey string, annotations map[string]string) {
+	if val, found := annotations[annotationKey]; found {
+		d, err := time.ParseDuration(val)
+		if err == nil {
+			*flag = d
+		}
+	}
 }
