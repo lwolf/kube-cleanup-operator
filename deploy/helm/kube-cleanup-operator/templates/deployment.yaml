@@ -32,8 +32,9 @@ spec:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
         helm.sh/from: deploy.{{ include "app.fullname" . }}
 {{ with .Values.podLabels }}{{ toYaml . | indent 8 }}{{ end }}
-      annotations:
-{{ with .Values.podAnnotations }}{{ toYaml . | indent 8 }}{{ end }}
+      {{- with .Values.podAnnotations }}
+      annotations: {{ toYaml . | nindent 8 -}}
+      {{- end }}
     spec:
       containers:
         - name: {{ .Chart.Name }}
