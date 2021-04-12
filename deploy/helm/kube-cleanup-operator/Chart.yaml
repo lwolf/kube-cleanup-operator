@@ -8,6 +8,6 @@ appVersion: v0.8.1
 keywords:
 - kubernetes
 - operator
-- clneaup
+- cleanup
 sources:
 - https://github.com/lwolf/kube-cleanup-operator.git
