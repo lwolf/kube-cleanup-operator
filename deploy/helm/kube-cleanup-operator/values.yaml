@@ -91,7 +91,7 @@ rbac:
 
 ## Arguments for kube-cleanup-operator
 ##
-args: []
+args:
   # - --namespace=default
   # - --delete-successful-after=5m
   # - --delete-failed-after=120m
