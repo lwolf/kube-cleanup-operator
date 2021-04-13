@@ -24,7 +24,20 @@ func podRelatedToCronJob(pod *corev1.Pod, jobStore cache.Store) bool {
 	return false
 }
 
-func shouldDeletePod(pod *corev1.Pod, orphaned, pending, evicted, successful, failed time.Duration) bool {
+func shouldDeletePod(pod *corev1.Pod, orphaned, pending, evicted, successful, failed time.Duration,
+	respectAnnotations bool) bool {
+
+	if respectAnnotations {
+		if isCleanupDisabled(pod.Annotations) {
+			return false
+		}
+		overrideDuration(&successful, annotationDeleteSuccessfulAfter, pod.Annotations)
+		overrideDuration(&failed, annotationDeleteFailedAfter, pod.Annotations)
+		overrideDuration(&evicted, annotationDeleteEvictedAfter, pod.Annotations)
+		overrideDuration(&orphaned, annotationDeleteOrphanedAfter, pod.Annotations)
+		overrideDuration(&pending, annotationDeletePendingAfter, pod.Annotations)
+	}
+
 	// evicted pods, those with or without owner references, but in Evicted state
 	//  - uses c.deleteEvictedAfter, this one is tricky, because there is no timestamp of eviction.
 	// So, basically it will be removed as soon as discovered
