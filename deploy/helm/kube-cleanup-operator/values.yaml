@@ -1,6 +1,9 @@
 ---
 replicas: 1
 
+# imagePullSecrets -- Kubernetes image Pull Secrets
+imagePullSecrets: []
+
 image:
   repository: quay.io/lwolf/kube-cleanup-operator
   pullPolicy: IfNotPresent
