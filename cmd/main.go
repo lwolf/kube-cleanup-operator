@@ -58,9 +58,11 @@ func main() {
 	legacyMode := flag.Bool("legacy-mode", true, "Legacy mode: `true` - use old `keep-*` flags, `false` - enable new `delete-*-after` flags")
 
 	dryRun := flag.Bool("dry-run", false, "Print only, do not delete anything.")
-	
+
 	labelSelector := flag.String("label-selector", "", "Delete only jobs and pods that meet label selector requirements")
 	
+	someKind := flag.String("some-kind", "", "Specify additional ownerReferences.Kind")
+
 	flag.Parse()
 	setupLogging()
 
@@ -82,6 +84,7 @@ func main() {
 	optsInfo.WriteString(fmt.Sprintf("\tkeep-pending: %d\n", *legacyKeepPendingHours))
 	
 	optsInfo.WriteString(fmt.Sprintf("\tlabel-selector: %s\n", *labelSelector))
+	optsInfo.WriteString(fmt.Sprintf("\tsome-kind: %s\n", *someKind))
 	log.Println(optsInfo.String())
 
 	if *legacyMode {
@@ -135,6 +138,7 @@ func main() {
 				*deleteEvictedAfter,
 				*ignoreOwnedByCronjob,
 				*labelSelector,
+				*someKind,
 				stopCh,
 			).Run()
 		}

@@ -24,7 +24,7 @@ func podRelatedToCronJob(pod *corev1.Pod, jobStore cache.Store) bool {
 	return false
 }
 
-func shouldDeletePod(pod *corev1.Pod, orphaned, pending, evicted, successful, failed time.Duration) bool {
+func shouldDeletePod(pod *corev1.Pod, someKind string, orphaned, pending, evicted, successful, failed time.Duration) bool {
 	// evicted pods, those with or without owner references, but in Evicted state
 	//  - uses c.deleteEvictedAfter, this one is tricky, because there is no timestamp of eviction.
 	// So, basically it will be removed as soon as discovered
@@ -44,7 +44,7 @@ func shouldDeletePod(pod *corev1.Pod, orphaned, pending, evicted, successful, fa
 		}
 		// owned by job, have exactly one ownerReference present and its kind is Job
 		//  - uses the c.deleteSuccessfulAfter, c.deleteFailedAfter, c.deletePendingAfter
-		if isOwnedByJob(owners) {
+		if isOwnedByJob(owners) || isOwnedBySomeKind(owners, someKind) {
 			switch pod.Status.Phase {
 			case corev1.PodSucceeded:
 				if successful > 0 && age >= successful {
@@ -84,6 +84,12 @@ func getPodOwnerKinds(pod *corev1.Pod) []string {
 // and this owners kind is Job
 func isOwnedByJob(ownerKinds []string) bool {
 	if len(ownerKinds) == 1 && ownerKinds[0] == "Job" {
+		return true
+	}
+	return false
+}
+func isOwnedBySomeKind(ownerKinds []string, someKind string) bool {
+	if len(ownerKinds) == 1 && ownerKinds[0] == someKind {
 		return true
 	}
 	return false
