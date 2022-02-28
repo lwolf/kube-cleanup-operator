@@ -79,6 +79,17 @@ affinity: {}
 securityContext:
   # runAsUser: 65534  # run as nobody user
 
+# Security context settings at the container level
+containerSecurityContext: 
+  # runAsUser: 65534
+  # runAsNonRoot: true
+  # allowPrivilegeEscalation: false
+  # readOnlyRootFilesystem: true
+
+# Existing Priority class name to be used for the pod
+priorityClassName:
+  # addons-priority
+
 serviceAccount:
   # Specifies whether a ServiceAccount should be created
   create: true

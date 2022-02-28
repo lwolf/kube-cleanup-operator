@@ -21,6 +21,7 @@ Kubernetes Operator to automatically delete completed Jobs and their Pods
 | args[4] | string | `"--delete-evicted-pods-after=60m"` |  |
 | args[5] | string | `"--delete-orphaned-pods-after=60m"` |  |
 | args[6] | string | `"--legacy-mode=false"` |  |
+| containerSecurityContext | string | `nil` |  |
 | envVariables | list | `[]` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"quay.io/lwolf/kube-cleanup-operator"` |  |
@@ -31,6 +32,7 @@ Kubernetes Operator to automatically delete completed Jobs and their Pods
 | nodeSelector | object | `{}` |  |
 | podAnnotations | object | `{}` |  |
 | podLabels | object | `{}` |  |
+| priorityClassName | string | `nil` |  |
 | rbac.create | bool | `true` |  |
 | readinessProbe.failureThreshold | int | `3` |  |
 | readinessProbe.httpGet.path | string | `"/metrics"` |  |
