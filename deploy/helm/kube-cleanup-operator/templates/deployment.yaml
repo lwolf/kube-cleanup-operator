@@ -63,6 +63,9 @@ spec:
           {{- with .Values.resources }}
           resources: {{ toYaml . | nindent 12 }}
           {{- end }}
+          {{- with .Values.containerSecurityContext }}
+          securityContext: {{ toYaml . | nindent 8 }}
+          {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector: {{ toYaml . | nindent 8 }}
       {{- end }}
@@ -76,3 +79,6 @@ spec:
       {{- with .Values.securityContext }}
       securityContext: {{ toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- end}}
