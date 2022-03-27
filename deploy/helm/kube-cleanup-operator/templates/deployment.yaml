@@ -64,7 +64,7 @@ spec:
           resources: {{ toYaml . | nindent 12 }}
           {{- end }}
           {{- with .Values.containerSecurityContext }}
-          securityContext: {{ toYaml . | nindent 8 }}
+          securityContext: {{ toYaml . | nindent 12 }}
           {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector: {{ toYaml . | nindent 8 }}
