@@ -106,7 +106,7 @@ rbac:
 ## Arguments for kube-cleanup-operator
 ##
 args: []
-  # - --namespace=default
+  # - --namespace={{ .Release.Namespace }}
   # - --delete-successful-after=5m
   # - --delete-failed-after=120m
   # - --delete-pending-pods-after=60m
