@@ -17,6 +17,7 @@ func TestKleaner_DeletePod(t *testing.T) {
 		evicted    time.Duration
 		successful time.Duration
 		failed     time.Duration
+		terminated time.Duration
 		expected   bool
 	}{
 		"expired orphaned pods should be deleted": {
@@ -155,7 +156,7 @@ func TestKleaner_DeletePod(t *testing.T) {
 	}
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			result := shouldDeletePod(tc.podSpec, tc.orphaned, tc.pending, tc.evicted, tc.successful, tc.failed)
+			result := shouldDeletePod(tc.podSpec, tc.orphaned, tc.pending, tc.evicted, tc.terminated, tc.successful, tc.failed)
 			if result != tc.expected {
 				t.Fatalf("failed, expected %v, got %v", tc.expected, result)
 			}
