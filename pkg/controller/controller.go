@@ -44,15 +44,17 @@ type Kleaner struct {
 	jobInformer cache.SharedIndexInformer
 	kclient     *kubernetes.Clientset
 
-	deleteSuccessfulAfter time.Duration
-	deleteFailedAfter     time.Duration
-	deletePendingAfter    time.Duration
-	deleteOrphanedAfter   time.Duration
-	deleteEvictedAfter    time.Duration
+	deleteSuccessfulAfter  time.Duration
+	deleteFailedAfter      time.Duration
+	deletePendingAfter     time.Duration
+	deleteOrphanedAfter    time.Duration
+	deleteEvictedAfter     time.Duration
+	deleteTerminatedAfter  time.Duration
+	deleteTerminatingAfter time.Duration
 
 	ignoreOwnedByCronjob bool
-	
-	labelSelector        string
+
+	labelSelector string
 
 	dryRun bool
 	ctx    context.Context
@@ -61,7 +63,7 @@ type Kleaner struct {
 
 // NewKleaner creates a new NewKleaner
 func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace string, dryRun bool, deleteSuccessfulAfter,
-	deleteFailedAfter, deletePendingAfter, deleteOrphanedAfter, deleteEvictedAfter time.Duration, ignoreOwnedByCronjob bool,
+	deleteFailedAfter, deletePendingAfter, deleteOrphanedAfter, deleteEvictedAfter time.Duration, deleteTerminatedAfter time.Duration, deleteTerminatingAfter time.Duration, ignoreOwnedByCronjob bool,
 	labelSelector string,
 	stopCh <-chan struct{}) *Kleaner {
 	jobInformer := cache.NewSharedIndexInformer(
@@ -96,17 +98,19 @@ func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace st
 		cache.Indexers{},
 	)
 	kleaner := &Kleaner{
-		dryRun:                dryRun,
-		kclient:               kclient,
-		ctx:                   ctx,
-		stopCh:                stopCh,
-		deleteSuccessfulAfter: deleteSuccessfulAfter,
-		deleteFailedAfter:     deleteFailedAfter,
-		deletePendingAfter:    deletePendingAfter,
-		deleteOrphanedAfter:   deleteOrphanedAfter,
-		deleteEvictedAfter:    deleteEvictedAfter,
-		ignoreOwnedByCronjob:  ignoreOwnedByCronjob,
-		labelSelector:         labelSelector,
+		dryRun:                 dryRun,
+		kclient:                kclient,
+		ctx:                    ctx,
+		stopCh:                 stopCh,
+		deleteSuccessfulAfter:  deleteSuccessfulAfter,
+		deleteFailedAfter:      deleteFailedAfter,
+		deletePendingAfter:     deletePendingAfter,
+		deleteOrphanedAfter:    deleteOrphanedAfter,
+		deleteEvictedAfter:     deleteEvictedAfter,
+		deleteTerminatedAfter:  deleteTerminatedAfter,
+		deleteTerminatingAfter: deleteTerminatingAfter,
+		ignoreOwnedByCronjob:   ignoreOwnedByCronjob,
+		labelSelector:          labelSelector,
 	}
 	jobInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, new interface{}) {
@@ -171,8 +175,11 @@ func (c *Kleaner) Process(obj interface{}) {
 		}
 	case *corev1.Pod:
 		pod := t
-		// skip pods that are already in the deleting process
-		if !pod.DeletionTimestamp.IsZero() {
+
+		if c.deleteTerminatingAfter > 0 && shouldDeleteTerminatingPod(t, c.deleteOrphanedAfter, c.deletePendingAfter, c.deleteEvictedAfter, c.deleteTerminatingAfter, c.deleteSuccessfulAfter, c.deleteFailedAfter) {
+			c.DeletePodWithForce(t)
+		} else {
+			// skip pods that are already in the deleting process
 			return
 		}
 		// skip pods related to jobs created by cronjobs if `ignoreOwnedByCronjob` is set
@@ -180,7 +187,7 @@ func (c *Kleaner) Process(obj interface{}) {
 			return
 		}
 		// normal cleanup flow
-		if shouldDeletePod(t, c.deleteOrphanedAfter, c.deletePendingAfter, c.deleteEvictedAfter, c.deleteSuccessfulAfter, c.deleteFailedAfter) {
+		if shouldDeletePod(t, c.deleteOrphanedAfter, c.deletePendingAfter, c.deleteEvictedAfter, c.deleteTerminatedAfter, c.deleteSuccessfulAfter, c.deleteFailedAfter) {
 			c.DeletePod(t)
 		}
 	}
@@ -209,6 +216,25 @@ func (c *Kleaner) DeletePod(pod *corev1.Pod) {
 	}
 	log.Printf("Deleting pod '%s/%s'", pod.Namespace, pod.Name)
 	var po metav1.DeleteOptions
+	if err := c.kclient.CoreV1().Pods(pod.Namespace).Delete(c.ctx, pod.Name, po); ignoreNotFound(err) != nil {
+		log.Printf("failed to delete pod '%s:%s': %v", pod.Namespace, pod.Name, err)
+		metrics.GetOrCreateCounter(metricName(podDeletedFailedMetric, pod.Namespace)).Inc()
+		return
+	}
+	metrics.GetOrCreateCounter(metricName(podDeletedMetric, pod.Namespace)).Inc()
+}
+
+// In Case If Pod(s) is Stuck in Terminating state just in case to delete with force
+// Not goood way to fid the root cause of the issue why pod is stuck in terminating state
+func (c *Kleaner) DeletePodWithForce(pod *corev1.Pod) {
+	if c.dryRun {
+		log.Printf("dry-run: Pod '%s:%s' would have been deleted", pod.Namespace, pod.Name)
+		return
+	}
+	log.Printf("Deleting terminating pod with force '%s/%s'", pod.Namespace, pod.Name)
+	var po metav1.DeleteOptions
+	gracePeriodSeconds := int64(0)
+	po.GracePeriodSeconds = &gracePeriodSeconds
 	if err := c.kclient.CoreV1().Pods(pod.Namespace).Delete(c.ctx, pod.Name, po); ignoreNotFound(err) != nil {
 		log.Printf("failed to delete pod '%s:%s': %v", pod.Namespace, pod.Name, err)
 		metrics.GetOrCreateCounter(metricName(podDeletedFailedMetric, pod.Namespace)).Inc()

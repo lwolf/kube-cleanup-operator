@@ -24,11 +24,37 @@ func podRelatedToCronJob(pod *corev1.Pod, jobStore cache.Store) bool {
 	return false
 }
 
-func shouldDeletePod(pod *corev1.Pod, orphaned, pending, evicted, successful, failed time.Duration) bool {
+func shouldDeleteTerminatingPod(pod *corev1.Pod, orphaned, pending, evicted, terminating, successful, failed time.Duration) bool {
+	// terminating pods which got hanged, those with or without owner references, but in Evicted state
+	//  - uses c.deleteEvictedAfter, this one is tricky, because there is no timestamp of eviction.
+	// So, basically it will be removed as soon as discovered
+
+	if !pod.DeletionTimestamp.IsZero() {
+		podFinishTime := podFinishTime(pod)
+		if !podFinishTime.IsZero() {
+			age := time.Since(podFinishTime)
+			if terminating > 0 && age >= terminating {
+				log.Println("Pod(s) Which Are In Terminating State")
+				log.Println(pod.Name)
+				log.Println("End - Pod(s) Which Are In Terminating State")
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func shouldDeletePod(pod *corev1.Pod, orphaned, pending, evicted, terminated, successful, failed time.Duration) bool {
 	// evicted pods, those with or without owner references, but in Evicted state
 	//  - uses c.deleteEvictedAfter, this one is tricky, because there is no timestamp of eviction.
 	// So, basically it will be removed as soon as discovered
 	if pod.Status.Phase == corev1.PodFailed && pod.Status.Reason == "Evicted" && evicted > 0 {
+		return true
+	}
+	if pod.Status.Phase == corev1.PodFailed && pod.Status.Reason == "OutOfpods" && evicted > 0 {
+		return true
+	}
+	if pod.Status.Phase == corev1.PodFailed && pod.Status.Reason == "OutOfcpu" && evicted > 0 {
 		return true
 	}
 	owners := getPodOwnerKinds(pod)
@@ -58,6 +84,12 @@ func shouldDeletePod(pod *corev1.Pod, orphaned, pending, evicted, successful, fa
 				return false
 			}
 			return false
+		}
+	}
+	if pod.Status.Phase == corev1.PodFailed && pod.Status.Reason == "Terminated" && terminated > 0 {
+		age := time.Since(podFinishTime)
+		if terminated > 0 && age >= terminated {
+			return true
 		}
 	}
 	if pod.Status.Phase == corev1.PodPending && pending > 0 {
