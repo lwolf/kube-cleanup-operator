@@ -19,3 +19,4 @@ USER kube-operator
 COPY --from=build /build/bin/kube-cleanup-operator .
 
 ENTRYPOINT ["./kube-cleanup-operator"]
+
