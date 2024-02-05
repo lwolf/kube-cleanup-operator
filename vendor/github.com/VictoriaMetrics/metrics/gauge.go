@@ -3,45 +3,70 @@ package metrics
 import (
 	"fmt"
 	"io"
+	"math"
+	"sync/atomic"
 )
 
-// NewGauge registers and returns gauge with the given name, which calls f
-// to obtain gauge value.
+// NewGauge registers and returns gauge with the given name, which calls f to obtain gauge value.
 //
 // name must be valid Prometheus-compatible metric with possible labels.
 // For instance,
 //
-//     * foo
-//     * foo{bar="baz"}
-//     * foo{bar="baz",aaa="b"}
+//   - foo
+//   - foo{bar="baz"}
+//   - foo{bar="baz",aaa="b"}
 //
 // f must be safe for concurrent calls.
+// if f is nil, then it is expected that the gauge value is changed via Gauge.Set() call.
 //
 // The returned gauge is safe to use from concurrent goroutines.
+//
+// See also FloatCounter for working with floating-point values.
 func NewGauge(name string, f func() float64) *Gauge {
 	return defaultSet.NewGauge(name, f)
 }
 
 // Gauge is a float64 gauge.
-//
-// See also Counter, which could be used as a gauge with Set and Dec calls.
 type Gauge struct {
+	// valueBits contains uint64 representation of float64 passed to Gauge.Set.
+	valueBits uint64
+
+	// f is a callback, which is called for returning the gauge value.
 	f func() float64
 }
 
 // Get returns the current value for g.
 func (g *Gauge) Get() float64 {
-	return g.f()
+	if f := g.f; f != nil {
+		return f()
+	}
+	n := atomic.LoadUint64(&g.valueBits)
+	return math.Float64frombits(n)
+}
+
+// Set sets g value to v.
+//
+// The g must be created with nil callback in order to be able to call this function.
+func (g *Gauge) Set(v float64) {
+	if g.f != nil {
+		panic(fmt.Errorf("cannot call Set on gauge created with non-nil callback"))
+	}
+	n := math.Float64bits(v)
+	atomic.StoreUint64(&g.valueBits, n)
 }
 
 func (g *Gauge) marshalTo(prefix string, w io.Writer) {
-	v := g.f()
+	v := g.Get()
 	if float64(int64(v)) == v {
 		// Marshal integer values without scientific notation
 		fmt.Fprintf(w, "%s %d\n", prefix, int64(v))
 	} else {
 		fmt.Fprintf(w, "%s %g\n", prefix, v)
 	}
+}
+
+func (g *Gauge) metricType() string {
+	return "gauge"
 }
 
 // GetOrCreateGauge returns registered gauge with the given name
@@ -51,13 +76,15 @@ func (g *Gauge) marshalTo(prefix string, w io.Writer) {
 // name must be valid Prometheus-compatible metric with possible labels.
 // For instance,
 //
-//     * foo
-//     * foo{bar="baz"}
-//     * foo{bar="baz",aaa="b"}
+//   - foo
+//   - foo{bar="baz"}
+//   - foo{bar="baz",aaa="b"}
 //
 // The returned gauge is safe to use from concurrent goroutines.
 //
 // Performance tip: prefer NewGauge instead of GetOrCreateGauge.
+//
+// See also FloatCounter for working with floating-point values.
 func GetOrCreateGauge(name string, f func() float64) *Gauge {
 	return defaultSet.GetOrCreateGauge(name, f)
 }
