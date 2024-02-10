@@ -41,8 +41,18 @@ func (f *Fast) Reset() {
 	f.max = infNeg
 	f.min = infPos
 	f.count = 0
-	f.a = f.a[:0]
-	f.tmp = f.tmp[:0]
+	if len(f.a) > 0 {
+		f.a = f.a[:0]
+		f.tmp = f.tmp[:0]
+	} else {
+		// Free up memory occupied by unused histogram.
+		f.a = nil
+		f.tmp = nil
+	}
+	// Reset rng state in order to get repeatable results
+	// for the same sequence of values passed to Fast.Update.
+	// See https://github.com/VictoriaMetrics/VictoriaMetrics/issues/1612
+	f.rng.Seed(1)
 }
 
 // Update updates the f with v.
