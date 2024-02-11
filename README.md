@@ -137,7 +137,7 @@ Usage of ./bin/kube-cleanup-operator:
   -run-outside-cluster
         Set this flag when running outside of the cluster.
   -label-selector
-        Delete only jobs and pods that meet label selector requirements. #See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+        Delete only jobs and pods that meet label selector requirements. See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
 ```
 
 ### Optional parameters 
