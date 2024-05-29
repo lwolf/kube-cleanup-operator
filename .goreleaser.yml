@@ -3,22 +3,16 @@
 project_name: kube-cleanup-operator
 
 builds:
-  - binary: kube-cleanup-operator
+  - id: build
+    binary: kube-cleanup-operator
     main: ./cmd/main.go
     env:
     - CGO_ENABLED=0
     goos:
-      - darwin
       - linux
     goarch:
       - amd64
       - arm64
-      - arm7
-    ignore:
-      - goos: darwin
-        goarch: arm7
-      - goos: darwin
-        goarch: arm64
 
 release:
   github:
@@ -27,11 +21,41 @@ release:
   prerelease: true
 
 dockers:
-  - dockerfile: Dockerfile.releaser
-    binaries:
-      - kube-cleanup-operator
+  - id: release-amd64
+    dockerfile: Dockerfile.releaser
+    use: buildx
     goos: linux
     goarch: amd64
+    ids:
+      - build
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/amd64"
     image_templates:
-    - 'quay.io/lwolf/kube-cleanup-operator:{{ .Tag }}'
-    - 'quay.io/lwolf/kube-cleanup-operator:latest'
+      - "quay.io/lwolf/kube-cleanup-operator:{{ .Version }}-amd64"
+
+  - id: release-arm64
+    dockerfile: Dockerfile.releaser
+    use: buildx
+    goos: linux
+    goarch: arm64
+    ids:
+      - build
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/arm64"
+    image_templates:
+      - "quay.io/lwolf/kube-cleanup-operator:{{ .Version }}-arm64"
+
+docker_manifests:
+  - id: manifest-release
+    name_template: "quay.io/lwolf/kube-cleanup-operator:{{ .Version }}"
+    image_templates:
+      - "quay.io/lwolf/kube-cleanup-operator:{{ .Version }}-amd64"
+      - "quay.io/lwolf/kube-cleanup-operator:{{ .Version }}-arm64"
+
+  - id: manifest-latest
+    name_template: "quay.io/lwolf/kube-cleanup-operator:latest"
+    image_templates:
+      - "quay.io/lwolf/kube-cleanup-operator:{{ .Version }}-amd64"
+      - "quay.io/lwolf/kube-cleanup-operator:{{ .Version }}-arm64"
