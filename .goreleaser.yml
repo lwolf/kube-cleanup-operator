@@ -32,7 +32,7 @@ dockers:
       - "--pull"
       - "--platform=linux/amd64"
     image_templates:
-      - "quay.io/lwolf/kube-cleanup-operator:v{{ .Version }}-amd64"
+      - "quay.io/lwolf/kube-cleanup-operator:{{ .Tag }}-amd64"
 
   - id: release-arm64
     dockerfile: Dockerfile.releaser
@@ -45,17 +45,17 @@ dockers:
       - "--pull"
       - "--platform=linux/arm64"
     image_templates:
-      - "quay.io/lwolf/kube-cleanup-operator:v{{ .Version }}-arm64"
+      - "quay.io/lwolf/kube-cleanup-operator:{{ .Tag }}-arm64"
 
 docker_manifests:
   - id: manifest-release
-    name_template: "quay.io/lwolf/kube-cleanup-operator:{{ .Version }}"
+    name_template: "quay.io/lwolf/kube-cleanup-operator:{{ .Tag }}"
     image_templates:
-      - "quay.io/lwolf/kube-cleanup-operator:v{{ .Version }}-amd64"
-      - "quay.io/lwolf/kube-cleanup-operator:v{{ .Version }}-arm64"
+      - "quay.io/lwolf/kube-cleanup-operator:{{ .Tag }}-amd64"
+      - "quay.io/lwolf/kube-cleanup-operator:{{ .Tag }}-arm64"
 
   - id: manifest-latest
     name_template: "quay.io/lwolf/kube-cleanup-operator:latest"
     image_templates:
-      - "quay.io/lwolf/kube-cleanup-operator:v{{ .Version }}-amd64"
-      - "quay.io/lwolf/kube-cleanup-operator:v{{ .Version }}-arm64"
+      - "quay.io/lwolf/kube-cleanup-operator:{{ .Tag }}-amd64"
+      - "quay.io/lwolf/kube-cleanup-operator:{{ .Tag }}-arm64"
