@@ -37,7 +37,7 @@ func setupLogging() {
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
 	logtostderr := klogFlags.Lookup("logtostderr")
-	logtostderr.Value.Set("true")
+	_ = logtostderr.Value.Set("true")
 }
 
 func main() {
@@ -58,9 +58,10 @@ func main() {
 	legacyMode := flag.Bool("legacy-mode", true, "Legacy mode: `true` - use old `keep-*` flags, `false` - enable new `delete-*-after` flags")
 
 	dryRun := flag.Bool("dry-run", false, "Print only, do not delete anything.")
-	
+
 	labelSelector := flag.String("label-selector", "", "Delete only jobs and pods that meet label selector requirements")
-	
+	respectAnnotations := flag.Bool("respect-annotations", false, "Defines if annotations jobs/pods kleaner.lwolf.org/* should be respected")
+
 	flag.Parse()
 	setupLogging()
 
@@ -80,8 +81,9 @@ func main() {
 	optsInfo.WriteString(fmt.Sprintf("\tkeep-successful: %d\n", *legacyKeepSuccessHours))
 	optsInfo.WriteString(fmt.Sprintf("\tkeep-failures: %d\n", *legacyKeepFailedHours))
 	optsInfo.WriteString(fmt.Sprintf("\tkeep-pending: %d\n", *legacyKeepPendingHours))
-	
+
 	optsInfo.WriteString(fmt.Sprintf("\tlabel-selector: %s\n", *labelSelector))
+	optsInfo.WriteString(fmt.Sprintf("\trespect-annotations: %v\n", *respectAnnotations))
 	log.Println(optsInfo.String())
 
 	if *legacyMode {
@@ -135,6 +137,7 @@ func main() {
 				*deleteEvictedAfter,
 				*ignoreOwnedByCronjob,
 				*labelSelector,
+				*respectAnnotations,
 				stopCh,
 			).Run()
 		}

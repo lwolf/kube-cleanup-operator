@@ -7,12 +7,22 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func shouldDeleteJob(job *batchv1.Job, deleteSuccessfulAfter, deleteFailedAfter time.Duration, ignoreCronJobs bool) bool {
+func shouldDeleteJob(job *batchv1.Job, deleteSuccessfulAfter, deleteFailedAfter time.Duration, ignoreCronJobs bool,
+	respectAnnotations bool) bool {
+
 	if ignoreCronJobs {
 		owners := getJobOwnerKinds(job)
 		if isOwnedByCronJob(owners) {
 			return false
 		}
+	}
+
+	if respectAnnotations {
+		if isCleanupDisabled(job.Annotations) {
+			return false
+		}
+		overrideDuration(&deleteSuccessfulAfter, annotationDeleteSuccessfulAfter, job.Annotations)
+		overrideDuration(&deleteFailedAfter, annotationDeleteFailedAfter, job.Annotations)
 	}
 
 	finishTime := jobFinishTime(job)
@@ -61,19 +71,19 @@ func jobFinishTime(jobObj *batchv1.Job) time.Time {
 }
 
 func isFailed(jobObj *batchv1.Job) bool {
-    if jobObj.Status.Failed > 0 {
-        return true
-    }
+	if jobObj.Status.Failed > 0 {
+		return true
+	}
 
-    // In case when Job fails due to the Deadline set on it (DeadlineExceeded), the job.Status.Failed does not contain a value
-    // Thus we have to iterate over job.Status.Conditions and look for a JobFailed in state "true".
-    for _, jc := range jobObj.Status.Conditions {
-        if jc.Type == batchv1.JobFailed && jc.Status == corev1.ConditionTrue {
-            return true
-        }
-    }
+	// In case when Job fails due to the Deadline set on it (DeadlineExceeded), the job.Status.Failed does not contain a value
+	// Thus we have to iterate over job.Status.Conditions and look for a JobFailed in state "true".
+	for _, jc := range jobObj.Status.Conditions {
+		if jc.Type == batchv1.JobFailed && jc.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
 
-    return false
+	return false
 }
 
 // isOwnedByCronJob returns true if and only if job has a single owner CronJob
