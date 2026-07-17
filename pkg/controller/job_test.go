@@ -135,6 +135,23 @@ func TestKleaner_DeleteJob(t *testing.T) {
 			ignoreCron: false,
 			expected:   true,
 		},
+		"successful job exactly at the delete threshold should be deleted": {
+			// completed exactly deleteSuccessfulAfter ago; both branches must
+			// treat the boundary identically (>=) so success and failure are
+			// consistent.
+			jobSpec:    createJob(false, ts.Add(-time.Minute), 0, 1, 0, []batchv1.JobCondition{}),
+			successful: time.Minute,
+			failed:     time.Minute,
+			ignoreCron: false,
+			expected:   true,
+		},
+		"failed job exactly at the delete threshold should be deleted": {
+			jobSpec:    createJob(false, ts.Add(-time.Minute), 0, 0, 1, []batchv1.JobCondition{}),
+			successful: time.Minute,
+			failed:     time.Minute,
+			ignoreCron: false,
+			expected:   true,
+		},
 	}
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {

@@ -24,7 +24,7 @@ func shouldDeleteJob(job *batchv1.Job, deleteSuccessfulAfter, deleteFailedAfter 
 	timeSinceFinish := time.Since(finishTime)
 
 	if job.Status.Succeeded > 0 {
-		if deleteSuccessfulAfter > 0 && timeSinceFinish > deleteSuccessfulAfter {
+		if deleteSuccessfulAfter > 0 && timeSinceFinish >= deleteSuccessfulAfter {
 			return true
 		}
 	}
@@ -61,19 +61,19 @@ func jobFinishTime(jobObj *batchv1.Job) time.Time {
 }
 
 func isFailed(jobObj *batchv1.Job) bool {
-    if jobObj.Status.Failed > 0 {
-        return true
-    }
+	if jobObj.Status.Failed > 0 {
+		return true
+	}
 
-    // In case when Job fails due to the Deadline set on it (DeadlineExceeded), the job.Status.Failed does not contain a value
-    // Thus we have to iterate over job.Status.Conditions and look for a JobFailed in state "true".
-    for _, jc := range jobObj.Status.Conditions {
-        if jc.Type == batchv1.JobFailed && jc.Status == corev1.ConditionTrue {
-            return true
-        }
-    }
+	// In case when Job fails due to the Deadline set on it (DeadlineExceeded), the job.Status.Failed does not contain a value
+	// Thus we have to iterate over job.Status.Conditions and look for a JobFailed in state "true".
+	for _, jc := range jobObj.Status.Conditions {
+		if jc.Type == batchv1.JobFailed && jc.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
 
-    return false
+	return false
 }
 
 // isOwnedByCronJob returns true if and only if job has a single owner CronJob
